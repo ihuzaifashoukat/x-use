@@ -15,7 +15,11 @@ from typing import Any, Dict, List, Optional
 
 import typer
 
-from xuse.core.config_loader import CONFIG_DIR, PROJECT_ROOT
+from xuse.core.config_loader import (
+    CONFIG_DIR,
+    PROJECT_ROOT,
+    normalize_account_dict as _normalize_account_dict,
+)
 from xuse.doctor import check_cookie_data
 from xuse.models import AccountConfig
 
@@ -73,22 +77,6 @@ def _choose_preset(kind: str, blurbs: Dict[str, str]) -> Optional[Path]:
     if choice <= 0 or choice > len(presets):
         return None
     return presets[choice - 1]
-
-
-def _normalize_account_dict(d: Dict[str, Any]) -> Dict[str, Any]:
-    """Mirror the orchestrator's legacy *_override key mapping for validation."""
-    normalized = dict(d)
-    legacy = {
-        "target_keywords": "target_keywords_override",
-        "competitor_profiles": "competitor_profiles_override",
-        "news_sites": "news_sites_override",
-        "research_paper_sites": "research_paper_sites_override",
-        "action_config": "action_config_override",
-    }
-    for new_key, old_key in legacy.items():
-        if new_key not in normalized and old_key in normalized:
-            normalized[new_key] = normalized[old_key]
-    return normalized
 
 
 def _validate_accounts(accounts: List[Dict[str, Any]]) -> List[str]:

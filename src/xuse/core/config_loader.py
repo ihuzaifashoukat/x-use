@@ -18,6 +18,25 @@ DEFAULT_ACCOUNTS_FILE = CONFIG_DIR / 'accounts.json'
 
 logger = logging.getLogger(__name__)
 
+# Legacy `*_override` keys in accounts.json, normalized onto current
+# AccountConfig field names. Single shared copy: core, MCP, and the wizard.
+LEGACY_ACCOUNT_KEY_MAP = {
+    "target_keywords_override": "target_keywords",
+    "competitor_profiles_override": "competitor_profiles",
+    "news_sites_override": "news_sites",
+    "research_paper_sites_override": "research_paper_sites",
+    "action_config_override": "action_config",
+}
+
+
+def normalize_account_dict(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Map legacy ``*_override`` keys onto current field names (new key wins)."""
+    normalized = dict(raw)
+    for legacy_key, new_key in LEGACY_ACCOUNT_KEY_MAP.items():
+        if new_key not in normalized and legacy_key in normalized:
+            normalized[new_key] = normalized.get(legacy_key)
+    return normalized
+
 class ConfigLoader:
     def __init__(self, settings_file: Union[str, Path] = DEFAULT_SETTINGS_FILE, 
                  accounts_file: Union[str, Path] = DEFAULT_ACCOUNTS_FILE):

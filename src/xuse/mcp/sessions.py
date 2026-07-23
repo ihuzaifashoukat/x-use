@@ -19,28 +19,13 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterator, Optional
 
 from xuse.core.browser_manager import BrowserManager
-from xuse.core.config_loader import ConfigLoader
+from xuse.core.config_loader import (
+    ConfigLoader,
+    LEGACY_ACCOUNT_KEY_MAP,
+    normalize_account_dict,
+)
 
 logger = logging.getLogger(__name__)
-
-# Legacy `*_override` keys in accounts.json, normalized onto current
-# AccountConfig fields (mirrors the mapping in xuse.orchestrator).
-LEGACY_ACCOUNT_KEY_MAP = {
-    "target_keywords_override": "target_keywords",
-    "competitor_profiles_override": "competitor_profiles",
-    "news_sites_override": "news_sites",
-    "research_paper_sites_override": "research_paper_sites",
-    "action_config_override": "action_config",
-}
-
-
-def normalize_account_dict(raw: Dict[str, Any]) -> Dict[str, Any]:
-    """Map legacy ``*_override`` keys onto current field names (new key wins)."""
-    normalized = dict(raw)
-    for legacy_key, new_key in LEGACY_ACCOUNT_KEY_MAP.items():
-        if new_key not in normalized and legacy_key in normalized:
-            normalized[new_key] = normalized.get(legacy_key)
-    return normalized
 
 
 class SessionError(Exception):
