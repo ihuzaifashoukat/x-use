@@ -25,6 +25,7 @@ dependencies = [
     "selenium",
     "webdriver-manager",
     "fake-headers",
+    "Pillow",
     "pydantic",
     "openai",
     "requests",
@@ -46,3 +47,6 @@ x-use = "xuse.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+xuse = ["skills_pack/*/SKILL.md"]
