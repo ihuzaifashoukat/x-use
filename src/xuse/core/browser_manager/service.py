@@ -7,7 +7,7 @@ from selenium.common.exceptions import WebDriverException, TimeoutException
 
 from xuse.core.config_loader import ConfigLoader, CONFIG_DIR as APP_CONFIG_DIR
 from .constants import PROJECT_ROOT, DEFAULT_WDM_CACHE_PATH, set_wdm_ssl_verify
-from .cookies import load_cookies_from_file, apply_cookies
+from .cookies import load_cookies_from_file, apply_cookies, is_valid_cookie_list
 from .options import configure_driver_options
 from .drivers import (
     init_chrome_driver,
@@ -41,7 +41,12 @@ class BrowserManager:
         except Exception:
             acct_proxy = None
         try:
-            from ..utils.proxy_manager import ProxyManager  # type: ignore
+            # ProxyManager lives at xuse.utils.proxy_manager — from this module
+            # (xuse.core.browser_manager) that is THREE dots up. The previous
+            # '..utils' resolved to the nonexistent xuse.core.utils, the import
+            # error was swallowed here, and 'pool:<name>' proxies were silently
+            # passed to the browser unresolved (or dropped entirely).
+            from ...utils.proxy_manager import ProxyManager  # type: ignore
         except Exception:
             ProxyManager = None  # type: ignore
         if ProxyManager:
@@ -76,7 +81,13 @@ class BrowserManager:
             if isinstance(cookies_input, str):
                 self.cookies_data = load_cookies_from_file(cookies_input, APP_CONFIG_DIR, PROJECT_ROOT)
             elif isinstance(cookies_input, list):
-                self.cookies_data = cookies_input
+                if is_valid_cookie_list(cookies_input):
+                    self.cookies_data = cookies_input
+                else:
+                    logger.error(
+                        "Invalid 'cookies' list in account_config: every entry must "
+                        "be a dict with 'name' and 'value'. Starting without cookies."
+                    )
             else:
                 logger.warning("Invalid 'cookies' format in account_config: expected path string or list.")
         elif isinstance(self.account_config.get('cookie_file_path'), str):
@@ -85,6 +96,13 @@ class BrowserManager:
     def get_driver(self) -> WebDriver:
         if self.driver and self.is_driver_active():
             return self.driver
+
+        # A set-but-unresponsive driver (crashed or killed externally) must be
+        # quit before it is replaced — otherwise every recovery leaks the old
+        # browser + driver processes (close_driver guards errors and nulls the
+        # attribute).
+        if self.driver is not None:
+            self.close_driver()
 
         browser_type = str(self.browser_settings.get('type', 'firefox')).lower()
         headless = bool(self.browser_settings.get('headless', False))

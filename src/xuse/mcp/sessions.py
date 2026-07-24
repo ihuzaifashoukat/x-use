@@ -69,6 +69,9 @@ class SessionPool:
         self._entries: Dict[str, SessionEntry] = {}
         self._create_lock: Optional[asyncio.Lock] = None
         self._reaper_task: Optional[asyncio.Task] = None
+        # Strong references to fire-and-forget cleanup tasks (orphaned-browser
+        # closes) so they can't be GC'd mid-close during shutdown.
+        self._bg_tasks: set = set()
         self._closed = False
 
     @property
@@ -133,7 +136,16 @@ class SessionPool:
             # Shutdown (close_all) passes wait=False: the server loop is
             # already torn down by then, and a lock abandoned mid-hold on a
             # dead loop would otherwise hang the cleanup forever.
-            await entry.lock.acquire()
+            try:
+                await entry.lock.acquire()
+            except asyncio.CancelledError:
+                # Cancelled (client disconnect) while an in-flight action held
+                # the lock: the entry was already popped, so without putting it
+                # back nothing — not the reaper, not close_all — would ever
+                # close this browser. Re-register it; the reaper skips locked
+                # entries and closes it once idle, and a later close() works.
+                self._entries[account_id] = entry
+                raise
         try:
             await asyncio.to_thread(entry.browser_manager.close_driver)
             logger.info("Closed browser session for account '%s'.", account_id)
@@ -173,7 +185,8 @@ class SessionPool:
         # Shield the startup thread from the timeout: wait_for cannot kill a
         # running thread, and an unshielded cancellation would drop the future
         # — the browser would eventually start with no handle and leak. The
-        # done callback closes any browser that finishes after the timeout.
+        # done callback closes any browser that finishes after its waiter went
+        # away (timeout OR cancellation of the acquiring task).
         start_future = asyncio.ensure_future(asyncio.to_thread(_start))
         try:
             manager = await asyncio.wait_for(
@@ -185,6 +198,13 @@ class SessionPool:
                 f"Browser cold start for account '{account_id}' timed out after "
                 f"{self.cold_start_timeout_seconds:.0f}s."
             ) from None
+        except asyncio.CancelledError:
+            # The waiter was cancelled (client disconnect, server shutdown)
+            # while the shielded startup thread kept running: close whatever
+            # browser it eventually delivers instead of leaking an untracked
+            # Chrome/chromedriver pair invisible to the pool and the reaper.
+            start_future.add_done_callback(self._close_late_started_browser)
+            raise
         except SessionError:
             raise
         except Exception as e:
@@ -206,7 +226,9 @@ class SessionPool:
             asyncio.get_running_loop()
         except RuntimeError:
             return
-        asyncio.ensure_future(asyncio.to_thread(self._close_driver_quietly, manager))
+        task = asyncio.ensure_future(asyncio.to_thread(self._close_driver_quietly, manager))
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
 
     @staticmethod
     def _close_driver_quietly(manager: Any) -> None:

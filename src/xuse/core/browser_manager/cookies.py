@@ -9,6 +9,19 @@ from selenium.common.exceptions import InvalidArgumentException
 logger = logging.getLogger(__name__)
 
 
+def is_valid_cookie_list(data: Any) -> bool:
+    """Cookie payloads must be a list of dicts carrying at least name+value.
+
+    Anything else (a ``{"cookies": [...]}`` wrapper dict, a bare cookie object,
+    string entries) would crash ``apply_cookies`` with an AttributeError AFTER
+    the browser process has already started — leaking the live browser.
+    """
+    return (
+        isinstance(data, list)
+        and all(isinstance(c, dict) and "name" in c and "value" in c for c in data)
+    )
+
+
 def load_cookies_from_file(candidate_path: str, config_dir: Path, project_root: Path) -> Optional[List[Dict[str, Any]]]:
     """Load cookies JSON from config dir, project root, or absolute path."""
     config_dir_cookie_path = config_dir / candidate_path
@@ -33,13 +46,22 @@ def load_cookies_from_file(candidate_path: str, config_dir: Path, project_root: 
 
     try:
         with resolved.open('r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
     except json.JSONDecodeError as e:
         logger.error(f"Error decoding JSON from cookie file {resolved}: {e}")
         return None
     except Exception as e:
         logger.error(f"Error loading cookies from file {resolved}: {e}")
         return None
+
+    if not is_valid_cookie_list(data):
+        logger.error(
+            f"Cookie file {resolved} has an unexpected shape: expected a JSON "
+            f"list of cookie objects with 'name' and 'value' (got "
+            f"{type(data).__name__}). Starting without cookies."
+        )
+        return None
+    return data
 
 
 def apply_cookies(driver: WebDriver, cookies: List[Dict[str, Any]], cookie_domain_url: Optional[str]) -> None:

@@ -659,7 +659,11 @@ class TwitterOrchestrator:
             logger.error(f"[{account.account_id or 'UnknownAccount'}] Unhandled error during account processing: {e}", exc_info=True)
         finally:
             if browser_manager:
-                browser_manager.close_driver()
+                # driver.quit() is a blocking, unbounded Selenium call — offload
+                # it so teardown never stalls the event loop (run_cycle drives
+                # this coroutine on the MCP server loop; SessionPool.close
+                # already does the same).
+                await asyncio.to_thread(browser_manager.close_driver)
             try:
                 metrics.mark_run_finish()
             except Exception:
