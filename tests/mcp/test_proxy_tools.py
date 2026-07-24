@@ -91,6 +91,7 @@ async def test_test_proxy_uses_explicit_url_and_masks(mcp_server, monkeypatch):
 
         def get_driver(self):
             class D:
+                def set_page_load_timeout(self, seconds): pass
                 def get(self, url): calls["url"] = url
                 @property
                 def page_source(self): return '{"ip":"203.0.113.7"}'
@@ -117,6 +118,7 @@ async def test_test_proxy_resolves_account_pool(mcp_server, monkeypatch):
 
         def get_driver(self):
             class D:
+                def set_page_load_timeout(self, seconds): pass
                 def get(self, url): pass
                 @property
                 def page_source(self): return '{"ip":"198.51.100.3"}'
@@ -135,3 +137,29 @@ async def test_test_proxy_resolves_account_pool(mcp_server, monkeypatch):
 async def test_test_proxy_without_target_errors(mcp_server):
     result = await call_tool(mcp_server, "test_proxy", {})
     assert_error_envelope(result, "proxy_url")
+
+
+@pytest.mark.asyncio
+async def test_test_proxy_fails_when_no_egress_ip(mcp_server, monkeypatch):
+    """A dead proxy loads Chrome's error page — no exception, no "ip" in the
+    source. That must be a probe failure, not ok:true with null IP (live
+    finding, v2.3)."""
+    class FakeBM:
+        def __init__(self, account_config=None): pass
+
+        def get_driver(self):
+            class D:
+                def set_page_load_timeout(self, seconds): pass
+                def get(self, url): pass
+                @property
+                def page_source(self):
+                    return "<html><body>ERR_PROXY_CONNECTION_FAILED</body></html>"
+            return D()
+
+        def close_driver(self): pass
+
+    monkeypatch.setattr(proxy_mod, "BrowserManager", FakeBM)
+    result = await call_tool(mcp_server, "test_proxy",
+                             {"proxy_url": "http://user:secret@127.0.0.1:9"})
+    assert_error_envelope(result, "did not report an egress IP")
+    assert "secret" not in str(result)

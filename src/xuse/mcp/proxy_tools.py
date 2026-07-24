@@ -199,16 +199,28 @@ def register_proxy_tools(server, ctx: Ctx) -> None:
             try:
                 started = time.monotonic()
                 driver = manager.get_driver()
+                # Dead proxies hang until Chrome's default navigation timeout
+                # (~2 min); cap it so a bad proxy fails in seconds.
+                driver.set_page_load_timeout(25)
                 driver.get(IP_ECHO_URL)
                 latency_ms = int((time.monotonic() - started) * 1000)
                 match = re.search(r'"ip"\s*:\s*"([^"]+)"', driver.page_source or "")
-                return {"egress_ip": match.group(1) if match else None,
+                if not match:
+                    # Chrome error pages (ERR_PROXY_CONNECTION_FAILED etc.)
+                    # load WITHOUT raising — no "ip" in the source means the
+                    # probe failed, never ok:true with a null IP (live finding).
+                    raise ToolError(
+                        f"Proxy {mask_proxy(resolved)} did not report an egress IP "
+                        "(connection failed or blocked).")
+                return {"egress_ip": match.group(1),
                         "latency_ms": latency_ms}
             finally:
                 manager.close_driver()
 
         try:
             probe = await asyncio.to_thread(_probe)
+        except ToolError:
+            raise
         except Exception as e:
             raise ToolError(ex.sanitize_text(
                 f"Proxy probe failed for {mask_proxy(resolved)}: {e}")) from e
