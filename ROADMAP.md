@@ -38,6 +38,7 @@ The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip 
   - [x] `get_metrics(account)` — read per-account metrics summaries
 - [x] **Draft / approval mode** — human-in-the-loop safety, on by default for MCP usage: write-tools return a draft object instead of posting; a separate `approve_draft(draft_id)` call executes it. Nothing goes live without an explicit approval unless you deliberately opt out
 - [x] Lazy per-account browser session pool with idle timeout, so MCP calls stay fast and never hang the client
+- [x] **v2.1 MCP expansion** — account management tools (add/update/pause/remove with validated atomic writes), a persistent scheduled-action queue (`queue_post`, `queue_engagement`, `process_queue`, opt-in `auto_drain` worker) with jittered pacing and daily caps, and support tools (draft listing/rejection, run status, account health)
 
 ### Config hygiene & docs
 

@@ -77,19 +77,53 @@ If `x-use` is not on your client's PATH, use the full path the installer printed
 
 ## MCP tools
 
+24 tools in four groups. Two safety gates: the immediate write tools run in draft mode by default (review, then `approve_draft`), and the queue only stores work until an explicit `process_queue` call (or the opt-in `auto_drain` worker) executes it with jittered pacing and daily caps.
+
+Read-only and status:
+
 | Tool | What it does |
 |---|---|
-| `list_accounts()` | List configured accounts with secrets stripped. Read-only; never starts a browser. |
-| `get_metrics(account)` | Counters and recent events for an account. Read-only; never starts a browser. |
-| `search_tweets(keywords, limit=10, account?)` | Search recent posts for a query. Read-only. |
-| `post_tweet(account, text, media?, community?)` | Post text/media, optionally into a community. |
-| `generate_and_post(account, topic)` | Generate a post about a topic with the configured LLM, then post it. |
-| `reply_to_tweet(account, tweet_url, text="auto")` | Reply with explicit text, or `"auto"` to generate from the tweet's actual content. |
-| `engage(account, keywords, actions=["like"], max_actions=5)` | Relevance-gated likes/retweets on keyword results, hard-capped by per-run config caps. |
-| `run_cycle(account?, pipelines?)` | Run a full orchestrator cycle in the background; returns a run handle immediately. |
-| `approve_draft(draft_id)` | Execute a pending draft exactly once, through the same pacing/dedup/metrics path as batch runs. |
+| `list_accounts()` | List configured accounts with secrets stripped. |
+| `get_account(account)` | One account's masked config plus cookie-file status. |
+| `get_metrics(account)` | Counters and recent events for an account. |
+| `search_tweets(keywords, limit=10, account?)` | Search recent posts for a query. |
+| `list_queue(account?, status?)` | Queued actions with full payloads (exactly what will fire) plus per-status counts. |
+| `list_drafts(status?, account?, limit=20)` | Drafts, newest first, with filters. |
+| `get_draft(draft_id)` | One draft by id. |
+| `reject_draft(draft_id)` | Reject a pending draft (local status flip; nothing touches X). |
+| `get_run_status(run_id?)` | Poll `run_cycle` handles. |
+| `get_account_health(account)` | Config, cookie validity, metrics, session, queue, and draft state in one call. |
 
-Drafts persist across restarts in `data/drafts.jsonl`.
+Write tools (draft-gated):
+
+| Tool | What it does |
+|---|---|
+| `post_tweet(account, text, media?, community?)` | Post text/media, optionally into a community. |
+| `generate_and_post(account, topic)` | Generate a post with the configured LLM, then post it. |
+| `reply_to_tweet(account, tweet_url, text="auto")` | Reply with explicit text, or `"auto"` to generate from the tweet's content. |
+| `engage(account, keywords, actions=["like"], max_actions=5)` | Relevance-gated likes/retweets on keyword results. |
+| `run_cycle(account?, pipelines?)` | Full orchestrator cycle in the background; returns a run handle. |
+| `approve_draft(draft_id)` | Execute a pending draft exactly once. |
+
+Scheduled queue (the second gate):
+
+| Tool | What it does |
+|---|---|
+| `queue_post(account, text? topic?, media?, community?, not_before?)` | Queue a post for paced execution. `topic` generates the text now, so `list_queue` shows the final payload. `not_before` schedules (ISO 8601). |
+| `queue_engagement(account, action, tweet_url, text?)` | Queue a like, retweet, or reply. Replies accept `"auto"` to generate the text now. |
+| `cancel_queued_action(queue_id)` | Cancel a pending or failed item. |
+| `process_queue(account?, max_actions=5)` | The approval gate: drains due items through the shared pacing/dedup/metrics path with daily caps. |
+
+Account management (validated, backed up, atomic):
+
+| Tool | What it does |
+|---|---|
+| `add_account(account_id, cookie_file?, proxy?, target_keywords?, is_active=true)` | Add an account. Cookies import from a file path on the server, never inline. |
+| `update_account(account, ...)` | Partial update; closes the warm session so changes take effect. |
+| `set_account_active(account, active)` | Pause or resume an account without deleting it. |
+| `remove_account(account, confirm)` | Remove an account (requires `confirm=true`; backups in `config/backups/`). |
+
+Drafts persist in `data/drafts.jsonl`; the queue persists in `data/engagement_queue.jsonl`. Both survive restarts.
 
 ## CLI
 
@@ -110,7 +144,7 @@ The legacy `python src/main.py` entry point still works via a deprecation shim (
 
 | Area | What you get |
 |---|---|
-| MCP server | 9 tools over stdio on the official MCP Python SDK (`FastMCP`, pinned `mcp>=1,<2`), with a lazy per-account browser session pool so calls stay fast. |
+| MCP server | 24 tools over stdio on the official MCP Python SDK (`FastMCP`, pinned `mcp>=1,<2`): draft-gated writes, a persistent scheduled-action queue with daily caps, account management, and a lazy per-account browser session pool. |
 | Draft mode | On by default. Write tools build the full payload (including LLM-generated text), store a draft, and touch nothing until `approve_draft` runs. |
 | Multi-account engine | Post (including communities and media), reply, repost/quote, like, keyword search, and relevance-gated engagement. Per-account overrides for keywords, LLM settings, and action behavior. |
 | LLM generation | OpenAI, Azure OpenAI, or Gemini with structured JSON prompting and strict extraction. Keys resolve from env/`.env` first, then `config/settings.json`. |
@@ -185,7 +219,7 @@ pip install -e '.[dev]'
 pytest
 ```
 
-148 tests cover config loading and merging, dedup keys, LLM JSON extraction, tweet parsing, proxy pool selection, the MCP tool contract, drafts, sessions, and the CLI; none of them needs a network or a browser. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the suite plus an import smoke check on Python 3.10/3.11/3.12.
+231 tests cover config loading and merging, dedup keys, LLM JSON extraction, tweet parsing, proxy pool selection, the MCP tool contract, drafts, sessions, the action queue, account writes, and the CLI; none of them needs a network or a browser. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the suite plus an import smoke check on Python 3.10/3.11/3.12.
 
 The v2.0 relaunch is merged; PyPI publishing and MCP directory submissions are the remaining Phase 1 items. Dashboard and Docker are Phase 2; personas, plugins, and selector self-healing are Phase 3. See [ROADMAP.md](ROADMAP.md).
 
