@@ -65,6 +65,13 @@ class FileHandler:
         """
         Loads processed action_keys from the CSV file.
         Each action_key should be unique and typically combines action type, account ID, and tweet ID.
+
+        Dedup is PERMANENT: every row loads regardless of its date. The MCP
+        server restarts on every client launch and reloads this set — a
+        same-day filter silently expired every key at midnight UTC while the
+        tool messages promise permanent dedup. Timestamps are still parsed
+        tolerantly (naive values are normalized to UTC so naive and aware
+        rows never mix), but a timestamp is never a reason to drop a key.
         """
         processed_keys: Set[str] = set()
         if not self.processed_tweets_file_path.exists():
@@ -72,7 +79,6 @@ class FileHandler:
             return processed_keys
 
         try:
-            today_date = datetime.now(timezone.utc).date()
             timestamp_col_idx = -1
 
             with self.processed_tweets_file_path.open(mode='r', newline='', encoding='utf-8') as file:
@@ -86,34 +92,35 @@ class FileHandler:
                 try:
                     timestamp_col_idx = header.index('timestamp')
                 except ValueError:
-                    logger.warning(f"'timestamp' column not found in header of {self.processed_tweets_file_path}. Cannot filter by day. Loading all keys.")
+                    logger.warning(f"'timestamp' column not found in header of {self.processed_tweets_file_path}. Loading all keys.")
                     # Fallback to loading all keys if no timestamp column
                     for row in reader:
-                        if row: processed_keys.add(row[0])
-                    logger.info(f"Loaded {len(processed_keys)} processed action keys (all, no timestamp filter) from {self.processed_tweets_file_path}")
+                        if row and row[0]: processed_keys.add(row[0])
+                    logger.info(f"Loaded {len(processed_keys)} processed action keys (all, no timestamp column) from {self.processed_tweets_file_path}")
                     return processed_keys
 
                 for row in reader:
-                    if not row or len(row) <= timestamp_col_idx:
-                        continue # Skip empty or short rows
-                    
+                    if not row or not row[0]:
+                        continue # Skip empty rows
+
                     action_key = row[0]
-                    timestamp_str = row[timestamp_col_idx]
-                    
-                    try:
-                        action_datetime = datetime.fromisoformat(timestamp_str)
-                        # Ensure datetime is timezone-aware for correct comparison if needed, or convert to UTC
-                        if action_datetime.tzinfo is None:
-                            action_datetime = action_datetime.replace(tzinfo=timezone.utc) # Assume UTC if naive
-                        
-                        if action_datetime.date() == today_date:
-                            processed_keys.add(action_key)
-                    except ValueError:
-                        logger.warning(f"Could not parse timestamp '{timestamp_str}' for action_key '{action_key}'. Skipping this entry for daily check.")
-                        # Optionally, still add the key if timestamp is unparseable but you want to be conservative
-                        # processed_keys.add(action_key) 
-            
-            logger.info(f"Loaded {len(processed_keys)} processed action keys from today ({today_date.isoformat()}) from {self.processed_tweets_file_path}")
+                    if len(row) > timestamp_col_idx:
+                        timestamp_str = row[timestamp_col_idx]
+                        try:
+                            action_datetime = datetime.fromisoformat(timestamp_str)
+                            # Normalize naive timestamps to UTC so naive-local
+                            # and aware-UTC rows never mix (writers have used
+                            # both). Loading never filters by date, so this
+                            # choice cannot drop a key.
+                            if action_datetime.tzinfo is None:
+                                action_datetime = action_datetime.replace(tzinfo=timezone.utc)
+                        except ValueError:
+                            # Keep the key anyway: a malformed timestamp must
+                            # not reopen a duplicate-write window.
+                            logger.warning(f"Could not parse timestamp '{timestamp_str}' for action_key '{action_key}'. Keeping the key (dedup is permanent).")
+                    processed_keys.add(action_key)
+
+            logger.info(f"Loaded {len(processed_keys)} processed action keys (all rows, permanent dedup) from {self.processed_tweets_file_path}")
         except StopIteration: # Handles empty file after header read attempt
              logger.warning(f"Processed actions file {self.processed_tweets_file_path} contains only a header or is empty.")
         except csv.Error as e:

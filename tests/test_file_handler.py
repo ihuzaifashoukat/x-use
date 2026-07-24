@@ -57,25 +57,32 @@ class TestLoad:
         )
         assert file_handler.load_processed_action_keys() == set()
 
-    def test_only_same_day_keys_loaded(self, file_handler):
+    def test_keys_from_previous_days_still_load(self, file_handler):
+        """Dedup is permanent: keys must not expire at midnight UTC (the MCP
+        server restarts per client launch and reloads this set)."""
         file_handler.save_processed_action_key("reply_acc1_today", timestamp=_now_utc_iso())
         # 25+ hours back is never "today", regardless of when the test runs.
         old_ts = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
         file_handler.save_processed_action_key("reply_acc1_yesterday", timestamp=old_ts)
 
-        assert file_handler.load_processed_action_keys() == {"reply_acc1_today"}
+        assert file_handler.load_processed_action_keys() == {
+            "reply_acc1_today",
+            "reply_acc1_yesterday",
+        }
 
     def test_naive_timestamp_assumed_utc(self, file_handler):
         naive_utc_now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         file_handler.save_processed_action_key("like_acc1_naive", timestamp=naive_utc_now)
         assert file_handler.load_processed_action_keys() == {"like_acc1_naive"}
 
-    def test_unparseable_timestamp_skipped(self, file_handler):
+    def test_unparseable_timestamp_keeps_the_key(self, file_handler):
+        """A malformed timestamp never drops a key — permanent dedup errs on
+        the side of keeping a processed action."""
         file_handler.save_processed_action_key("repost_acc1_bad", timestamp="not-a-date")
         file_handler.save_processed_action_key("repost_acc1_good", timestamp=_now_utc_iso())
-        assert file_handler.load_processed_action_keys() == {"repost_acc1_good"}
+        assert file_handler.load_processed_action_keys() == {"repost_acc1_bad", "repost_acc1_good"}
 
-    def test_rows_shorter_than_timestamp_column_skipped(self, file_handler):
+    def test_rows_shorter_than_timestamp_column_still_load(self, file_handler):
         path = file_handler.processed_tweets_file_path
         path.write_text(
             "action_key,timestamp\n"
@@ -83,7 +90,7 @@ class TestLoad:
             f"full_row_key,{_now_utc_iso()}\n",
             encoding="utf-8",
         )
-        assert file_handler.load_processed_action_keys() == {"full_row_key"}
+        assert file_handler.load_processed_action_keys() == {"short_row_key", "full_row_key"}
 
     def test_no_timestamp_column_loads_all_keys(self, file_handler):
         path = file_handler.processed_tweets_file_path

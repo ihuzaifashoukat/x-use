@@ -1,4 +1,6 @@
 import json
+import logging
+import os
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -10,6 +12,8 @@ except ImportError:
     from pathlib import Path as _P
     sys.path.append(str(_P(__file__).resolve().parent.parent.parent))
     from xuse.core.config_loader import ConfigLoader, PROJECT_ROOT
+
+logger = logging.getLogger(__name__)
 
 
 class MetricsRecorder:
@@ -34,12 +38,7 @@ class MetricsRecorder:
         # Cached summary
         self.summary: Dict[str, Any] = self._load_summary()
 
-    def _load_summary(self) -> Dict[str, Any]:
-        if self.summary_path.exists():
-            try:
-                return json.loads(self.summary_path.read_text(encoding='utf-8'))
-            except Exception:
-                pass
+    def _default_summary(self) -> Dict[str, Any]:
         return {
             'account_id': self.account_id,
             'counters': {
@@ -53,6 +52,35 @@ class MetricsRecorder:
             'last_run_started_at': None,
             'last_run_finished_at': None,
         }
+
+    @staticmethod
+    def _is_valid_summary(data: Any) -> bool:
+        """A usable summary is a dict whose 'counters' is a dict of ints —
+        anything else would crash increment()/mark_run_* with KeyError or
+        TypeError after the action already happened."""
+        if not isinstance(data, dict):
+            return False
+        counters = data.get('counters')
+        if not isinstance(counters, dict):
+            return False
+        return all(isinstance(value, int) for value in counters.values())
+
+    def _load_summary(self) -> Dict[str, Any]:
+        if self.summary_path.exists():
+            try:
+                data = json.loads(self.summary_path.read_text(encoding='utf-8'))
+            except Exception:
+                logger.warning(
+                    "Metrics summary %s is unreadable; starting from default counters.",
+                    self.summary_path)
+                return self._default_summary()
+            if self._is_valid_summary(data):
+                return data
+            logger.warning(
+                "Metrics summary %s has an unexpected shape; resetting to default counters.",
+                self.summary_path)
+            return self._default_summary()
+        return self._default_summary()
 
     def mark_run_start(self):
         self.summary['last_run_started_at'] = datetime.utcnow().isoformat()
@@ -78,5 +106,8 @@ class MetricsRecorder:
             f.write(json.dumps(payload, ensure_ascii=False) + '\n')
 
     def _flush_summary(self):
-        self.summary_path.write_text(json.dumps(self.summary, ensure_ascii=False, indent=2), encoding='utf-8')
-
+        # Temp file + os.replace (same directory): a crash mid-flush can
+        # never leave a truncated summary that would silently zero counters.
+        tmp_path = self.summary_path.with_name(self.summary_path.name + '.tmp')
+        tmp_path.write_text(json.dumps(self.summary, ensure_ascii=False, indent=2), encoding='utf-8')
+        os.replace(tmp_path, self.summary_path)

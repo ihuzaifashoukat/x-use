@@ -47,6 +47,7 @@ class Ctx:
     processed_keys: Optional[Set[str]] = None
     metrics_factory: Optional[Callable[[str], Any]] = None
     last_action_at: Dict[str, float] = field(default_factory=dict)
+    pacing_locks: Optional[Dict[str, asyncio.Lock]] = None
     runs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     queue_store: Optional[QueueStore] = None
     queue_config: Optional[QueueConfig] = None
@@ -142,22 +143,49 @@ def require_llm(ctx: Ctx) -> LLMService:
 
 # ---------------------------------------------------------------------------
 # Pacing (NFR-4): per-account minimum spacing between write actions.
-# No "no delay" fast path is exposed anywhere.
+# No "no delay" fast path is exposed anywhere — and pacing spaces *attempts*,
+# not just successes: a failed write still drove the browser against X, so
+# retries after a failure must wait out the delay too.
 # ---------------------------------------------------------------------------
 
 
+def _pacing_lock(ctx: Ctx, account_id: str) -> asyncio.Lock:
+    """Per-account pacing lock, created lazily. The get-or-create has no
+    await between read and write, so it is race-free on a single event loop."""
+    if ctx.pacing_locks is None:
+        ctx.pacing_locks = {}
+    lock = ctx.pacing_locks.get(account_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        ctx.pacing_locks[account_id] = lock
+    return lock
+
+
 async def pace(ctx: Ctx, account_id: str, action_config: ActionConfig) -> None:
+    """Wait out the account's minimum action spacing, then atomically reserve
+    this attempt's timestamp. The account's lock is held across the whole
+    check-sleep-set, so concurrent same-account writers serialize and each
+    paces against the previous writer's actual start time — two tasks can
+    never pass the check against the same stale timestamp and fire together."""
     min_delay = max(0, int(action_config.min_delay_between_actions_seconds))
-    last = ctx.last_action_at.get(account_id)
-    if last is not None:
-        wait = min_delay - (time.monotonic() - last)
-        if wait > 0:
-            logger.info("[mcp] pacing account '%s': waiting %.1fs before next write action.", account_id, wait)
-            await asyncio.sleep(wait)
+    lock = _pacing_lock(ctx, account_id)
+    async with lock:
+        last = ctx.last_action_at.get(account_id)
+        if last is not None:
+            wait = min_delay - (time.monotonic() - last)
+            if wait > 0:
+                logger.info("[mcp] pacing account '%s': waiting %.1fs before next write action.", account_id, wait)
+                await asyncio.sleep(wait)
+        ctx.last_action_at[account_id] = time.monotonic()
 
 
-def mark_action_now(ctx: Ctx, account_id: str) -> None:
-    ctx.last_action_at[account_id] = time.monotonic()
+async def mark_action_now(ctx: Ctx, account_id: str) -> None:
+    """Record a write-attempt timestamp for the account (under its pacing
+    lock). Called right after ``pace()`` — before the write executes — so
+    attempts are spaced even when the action goes on to fail."""
+    lock = _pacing_lock(ctx, account_id)
+    async with lock:
+        ctx.last_action_at[account_id] = time.monotonic()
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +210,14 @@ def is_processed(ctx: Ctx, key: str) -> bool:
 
 
 def mark_processed(ctx: Ctx, key: str) -> None:
-    _file_handler(ctx).save_processed_action_key(key, timestamp=datetime.now(timezone.utc).isoformat())
+    saved = _file_handler(ctx).save_processed_action_key(
+        key, timestamp=datetime.now(timezone.utc).isoformat())
+    if not saved:
+        # Non-fatal for this action, but the key now survives only in memory:
+        # after a restart the same write would pass the dedup check again.
+        logger.warning(
+            "Failed to persist dedup key '%s' — it is tracked in memory only "
+            "until restart; duplicate protection is degraded.", key)
     _processed(ctx).add(key)
 
 

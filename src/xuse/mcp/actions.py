@@ -33,23 +33,33 @@ async def exec_post(
     action_config = ex.current_action_config(ctx, model)
     if community:
         model = model.model_copy(update={"post_to_community": True, "community_id": community})
-    dedup_key = f"post_{account_id}_{hashlib.sha1((text or '').encode('utf-8')).hexdigest()[:12]}"
+    # Same text with different media or community is NOT the same post — the
+    # key discriminates on the full payload. Keep byte-identical with
+    # queue_tools.queue_post so the enqueue gate and this executor agree.
+    key_material = (text or "") + "|" + str(media or []) + "|" + str(community)
+    dedup_key = f"post_{account_id}_{hashlib.sha1(key_material.encode('utf-8')).hexdigest()[:12]}"
     if ex.is_processed(ctx, dedup_key):
         raise ToolError("An identical post was already executed for this account (dedup).")
     content = TweetContent(text=text, local_media_paths=list(media) if media else None)
     await ex.pace(ctx, account_id, action_config)
+    await ex.mark_action_now(ctx, account_id)  # pace attempts, not just successes
     async with ctx.session_pool.session(account_id) as browser_manager:
         publisher = TweetPublisher(browser_manager, ex.get_llm(ctx), model)
         # llm_settings=None → text posts verbatim (no re-generation of reviewed drafts)
         success = await publisher.post_new_tweet(content, llm_settings=None)
-    metrics = ex.metrics_for(ctx, account_id)
-    metrics.log_event("post", "success" if success else "failure", {"source": "mcp"})
+    if success:
+        # Dedup is the crash-safety net: persist it BEFORE any metrics I/O, so
+        # a metrics failure can never strand a live post without its key.
+        ex.mark_processed(ctx, dedup_key)
+    try:
+        metrics = ex.metrics_for(ctx, account_id)
+        metrics.log_event("post", "success" if success else "failure", {"source": "mcp"})
+        metrics.increment("posts" if success else "errors")
+    except Exception:
+        # Metrics must never masquerade as an action failure.
+        logger.exception("[mcp] metrics recording failed for account '%s'; the post outcome is unaffected.", account_id)
     if not success:
-        metrics.increment("errors")
         raise ToolError("Post failed — see the account event log for details.")
-    metrics.increment("posts")
-    ex.mark_processed(ctx, dedup_key)
-    ex.mark_action_now(ctx, account_id)
     return {"account": account_id, "action": "post_tweet", "success": True}
 
 
@@ -74,17 +84,21 @@ async def exec_reply(
         raise ToolError(f"Already replied to tweet {tweet_id} from this account (dedup).")
     tweet = ScrapedTweet(tweet_id=tweet_id, tweet_url=tweet_url, text_content=text_content or "")
     await ex.pace(ctx, account_id, action_config)
+    await ex.mark_action_now(ctx, account_id)  # pace attempts, not just successes
     async with ctx.session_pool.session(account_id) as browser_manager:
         publisher = TweetPublisher(browser_manager, ex.get_llm(ctx), model)
         success = await publisher.reply_to_tweet(tweet, reply_text[:ex.MAX_REPLY_CHARS])
-    metrics = ex.metrics_for(ctx, account_id)
-    metrics.log_event("reply", "success" if success else "failure", {"tweet_id": tweet_id, "source": "mcp"})
+    if success:
+        # Dedup first (crash-safety net), metrics second — see exec_post.
+        ex.mark_processed(ctx, dedup_key)
+    try:
+        metrics = ex.metrics_for(ctx, account_id)
+        metrics.log_event("reply", "success" if success else "failure", {"tweet_id": tweet_id, "source": "mcp"})
+        metrics.increment("replies" if success else "errors")
+    except Exception:
+        logger.exception("[mcp] metrics recording failed for account '%s'; the reply outcome is unaffected.", account_id)
     if not success:
-        metrics.increment("errors")
         raise ToolError(f"Reply to tweet {tweet_id} failed — see the account event log.")
-    metrics.increment("replies")
-    ex.mark_processed(ctx, dedup_key)
-    ex.mark_action_now(ctx, account_id)
     return {"account": account_id, "action": "reply_to_tweet", "tweet_id": tweet_id, "success": True}
 
 
@@ -96,17 +110,21 @@ async def exec_like(ctx: Ctx, account_id: str, tweet_id: str, tweet_url: Optiona
     if ex.is_processed(ctx, dedup_key):
         raise ToolError(f"Already liked tweet {tweet_id} from this account (dedup).")
     await ex.pace(ctx, account_id, action_config)
+    await ex.mark_action_now(ctx, account_id)  # pace attempts, not just successes
     async with ctx.session_pool.session(account_id) as browser_manager:
         engagement = TweetEngagement(browser_manager, model)
         success = await engagement.like_tweet(tweet_id=tweet_id, tweet_url=tweet_url)
-    metrics = ex.metrics_for(ctx, account_id)
-    metrics.log_event("like", "success" if success else "failure", {"tweet_id": tweet_id, "source": "mcp"})
+    if success:
+        # Dedup first (crash-safety net), metrics second — see exec_post.
+        ex.mark_processed(ctx, dedup_key)
+    try:
+        metrics = ex.metrics_for(ctx, account_id)
+        metrics.log_event("like", "success" if success else "failure", {"tweet_id": tweet_id, "source": "mcp"})
+        metrics.increment("likes" if success else "errors")
+    except Exception:
+        logger.exception("[mcp] metrics recording failed for account '%s'; the like outcome is unaffected.", account_id)
     if not success:
-        metrics.increment("errors")
         raise ToolError(f"Like on tweet {tweet_id} failed — see the account event log.")
-    metrics.increment("likes")
-    ex.mark_processed(ctx, dedup_key)
-    ex.mark_action_now(ctx, account_id)
     return {"account": account_id, "action": "like", "tweet_id": tweet_id, "success": True}
 
 
@@ -120,17 +138,21 @@ async def exec_retweet(ctx: Ctx, account_id: str, tweet_id: str, tweet_url: Opti
         raise ToolError(f"Already retweeted tweet {tweet_id} from this account (dedup).")
     tweet = ScrapedTweet(tweet_id=tweet_id, tweet_url=tweet_url, text_content=text_content or "")
     await ex.pace(ctx, account_id, action_config)
+    await ex.mark_action_now(ctx, account_id)  # pace attempts, not just successes
     async with ctx.session_pool.session(account_id) as browser_manager:
         publisher = TweetPublisher(browser_manager, ex.get_llm(ctx), model)
         success = await publisher.retweet_tweet(tweet)
-    metrics = ex.metrics_for(ctx, account_id)
-    metrics.log_event("retweet", "success" if success else "failure", {"tweet_id": tweet_id, "source": "mcp"})
+    if success:
+        # Dedup first (crash-safety net), metrics second — see exec_post.
+        ex.mark_processed(ctx, dedup_key)
+    try:
+        metrics = ex.metrics_for(ctx, account_id)
+        metrics.log_event("retweet", "success" if success else "failure", {"tweet_id": tweet_id, "source": "mcp"})
+        metrics.increment("retweets" if success else "errors")
+    except Exception:
+        logger.exception("[mcp] metrics recording failed for account '%s'; the retweet outcome is unaffected.", account_id)
     if not success:
-        metrics.increment("errors")
         raise ToolError(f"Retweet of tweet {tweet_id} failed — see the account event log.")
-    metrics.increment("retweets")
-    ex.mark_processed(ctx, dedup_key)
-    ex.mark_action_now(ctx, account_id)
     return {"account": account_id, "action": "retweet", "tweet_id": tweet_id, "success": True}
 
 

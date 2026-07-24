@@ -110,11 +110,22 @@ def register_tools(server, ctx: Ctx) -> None:
             "last_run_started_at": None,
             "last_run_finished_at": None,
         }
+        warning: Optional[str] = None
         if summary_path.exists():
             try:
-                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                loaded_summary = json.loads(summary_path.read_text(encoding="utf-8"))
             except Exception:
                 raise ToolError(f"Metrics file for account '{account}' is unreadable.")
+            if isinstance(loaded_summary, dict):
+                summary = loaded_summary
+            else:
+                # Corrupt-but-valid JSON (e.g. a list): never return the wrong
+                # shape verbatim under ok:true — the documented summary is a dict.
+                warning = (
+                    f"Metrics file for account '{account}' has an unexpected shape "
+                    f"({type(loaded_summary).__name__}, expected an object) — returning default counters."
+                )
+                logger.warning("get_metrics: %s", warning)
         recent_events: List[Dict[str, Any]] = []
         if events_path.exists():
             lines = [ln for ln in events_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
@@ -123,7 +134,10 @@ def register_tools(server, ctx: Ctx) -> None:
                     recent_events.append(json.loads(line))
                 except Exception:
                     continue
-        return ok_(account=account, summary=summary, recent_events=recent_events)
+        envelope = ok_(account=account, summary=summary, recent_events=recent_events)
+        if warning is not None:
+            envelope["warning"] = warning
+        return envelope
 
     @server.tool()
     @guard
@@ -201,8 +215,16 @@ def register_tools(server, ctx: Ctx) -> None:
         ctx.draft_store.set_status(draft_id, "approved")
         try:
             result = await actions.execute_draft(ctx, draft)
-        except Exception:
-            ctx.draft_store.set_status(draft_id, "failed")
+        except Exception as e:
+            # Crash-window self-heal: a dedup-duplicate rejection means this
+            # exact action already executed (e.g. the server died after the
+            # write landed but before the "executed" append) — the draft IS
+            # executed, so don't mislabel it "failed".
+            message = str(e)
+            if isinstance(e, ToolError) and ("dedup" in message or "Already" in message):
+                ctx.draft_store.set_status(draft_id, "executed")
+            else:
+                ctx.draft_store.set_status(draft_id, "failed")
             raise
         ctx.draft_store.set_status(draft_id, "executed")
         return ok_(draft_id=draft_id, status="executed", result=result)
