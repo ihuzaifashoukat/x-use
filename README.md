@@ -77,56 +77,26 @@ If `x-use` is not on your client's PATH, use the full path the installer printed
 
 ## MCP tools
 
-25 tools in four groups. Two safety gates: the immediate write tools run in draft mode by default (review, then `approve_draft`), and the queue only stores work until an explicit `process_queue` call (or the opt-in `auto_drain` worker) executes it with jittered pacing and daily caps.
+32 tools in six groups — full reference with signatures and examples: [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md). Two safety gates: write tools run in draft mode by default (review, then `approve_draft`), and the queue only stores work until an explicit `process_queue` call.
 
-Interactive use needs no LLM key at all: your MCP client (Claude, Codex, ...) does the thinking and passes explicit text to the write tools. The optional server-side LLM (`llm` block in settings) only powers `"auto"` generation and background automation.
-
-Read-only and status:
-
-| Tool | What it does |
+| Group | Tools |
 |---|---|
-| `list_accounts()` | List configured accounts with secrets stripped. |
-| `get_account(account)` | One account's masked config plus cookie-file status. |
-| `get_metrics(account)` | Counters and recent events for an account. |
-| `search_tweets(keywords, limit=10, account?)` | Search recent posts for a query. |
-| `prepare_reply(account, tweet_url)` | Fetch a tweet's content plus the account context so your agent can write the reply itself. No LLM, nothing posted. |
-| `list_queue(account?, status?)` | Queued actions with full payloads (exactly what will fire) plus per-status counts. |
-| `list_drafts(status?, account?, limit=20)` | Drafts, newest first, with filters. |
-| `get_draft(draft_id)` | One draft by id. |
-| `reject_draft(draft_id)` | Reject a pending draft (local status flip; nothing touches X). |
-| `get_run_status(run_id?)` | Poll `run_cycle` handles. |
-| `get_account_health(account)` | Config, cookie validity, metrics, session, queue, and draft state in one call. |
+| Read-only & status | `list_accounts`, `get_account`, `get_metrics`, `search_tweets`, `get_tweet`, `prepare_reply`, `list_queue`, `list_drafts`, `get_draft`, `reject_draft`, `get_run_status`, `get_account_health`, `list_proxies` |
+| Write (draft-gated) | `post_tweet`, `generate_and_post`, `reply_to_tweet`, `engage`, `run_cycle`, `approve_draft` |
+| Scheduled queue | `queue_post`, `queue_engagement`, `cancel_queued_action`, `process_queue` |
+| Composite (server LLM) | `research_and_stage`, `draft_post_variations` |
+| Account management | `add_account`, `update_account`, `set_account_active`, `remove_account` |
+| Proxy management | `add_proxy`, `remove_proxy`, `test_proxy` |
 
-Write tools (draft-gated):
-
-| Tool | What it does |
-|---|---|
-| `post_tweet(account, text, media?, community?)` | Post text/media, optionally into a community. |
-| `generate_and_post(account, topic)` | Generate a post with the server-side LLM (needs the `llm` block), then post it. Prefer `post_tweet` with your own text when driving from an MCP client. |
-| `reply_to_tweet(account, tweet_url, text="auto")` | Reply with explicit text, or `"auto"` to generate from the tweet's content via the server-side LLM. |
-| `engage(account, keywords, actions=["like"], max_actions=5)` | Relevance-gated likes/retweets on keyword results. |
-| `run_cycle(account?, pipelines?)` | Full orchestrator cycle in the background; returns a run handle. |
-| `approve_draft(draft_id)` | Execute a pending draft exactly once. |
-
-Scheduled queue (the second gate):
-
-| Tool | What it does |
-|---|---|
-| `queue_post(account, text? topic?, media?, community?, not_before?)` | Queue a post for paced execution. `topic` generates the text now, so `list_queue` shows the final payload. `not_before` schedules (ISO 8601). |
-| `queue_engagement(account, action, tweet_url, text?)` | Queue a like, retweet, or reply. Replies accept `"auto"` to generate the text now. |
-| `cancel_queued_action(queue_id)` | Cancel a pending or failed item. |
-| `process_queue(account?, max_actions=5)` | The approval gate: drains due items through the shared pacing/dedup/metrics path with daily caps. |
-
-Account management (validated, backed up, atomic):
-
-| Tool | What it does |
-|---|---|
-| `add_account(account_id, cookie_file?, proxy?, target_keywords?, is_active=true)` | Add an account. Cookies import from a file path on the server, never inline. |
-| `update_account(account, ...)` | Partial update; closes the warm session so changes take effect. |
-| `set_account_active(account, active)` | Pause or resume an account without deleting it. |
-| `remove_account(account, confirm)` | Remove an account (requires `confirm=true`; backups in `config/backups/`). |
+Interactive use needs no LLM key: your MCP client (Claude, Codex, ...) does the thinking, sees tweet images via `get_tweet`/`prepare_reply`, and passes explicit text to the write tools. The optional server-side LLM (`llm` block) only powers the composite tools, `"auto"` text, and background automation.
 
 Drafts persist in `data/drafts.jsonl`; the queue persists in `data/engagement_queue.jsonl`. Both survive restarts.
+
+## Agent skills
+
+`x-use init` (or `x-use skills install`) installs five agent skills for Claude Code and Codex: **x-use** (overview), **x-use-setup** (zero-knowledge onboarding interview), **x-use-engage** (research + reply workflow), **x-use-content** (content creation), **x-use-review** (daily digest). Claude Code users can also install from the marketplace: `/plugin marketplace add ihuzaifashoukat/x-use`.
+
+**Zero-knowledge setup:** paste the prompt from [docs/SETUP_PROMPT.md](docs/SETUP_PROMPT.md) into your AI client — it installs, registers, verifies, and interviews you to configure your account.
 
 ## CLI
 
@@ -147,7 +117,7 @@ The legacy `python src/main.py` entry point still works via a deprecation shim (
 
 | Area | What you get |
 |---|---|
-| MCP server | 25 tools over stdio on the official MCP Python SDK (`FastMCP`, pinned `mcp>=1.6,<2`): draft-gated writes, a persistent scheduled-action queue with daily caps, account management, and a lazy per-account browser session pool. |
+| MCP server | 32 tools over stdio on the official MCP Python SDK (`FastMCP`, pinned `mcp>=1.6,<2`): draft-gated writes, a persistent scheduled-action queue with daily caps, account management, and a lazy per-account browser session pool. |
 | Draft mode | On by default. Write tools build the full payload (including LLM-generated text), store a draft, and touch nothing until `approve_draft` runs. |
 | Multi-account engine | Post (including communities and media), reply, repost/quote, like, keyword search, and relevance-gated engagement. Per-account overrides for keywords, LLM settings, and action behavior. |
 | LLM generation | One OpenAI-compatible client (`llm`: api_key, base_url, model) covers OpenAI, OpenRouter, Azure, Gemini, and local servers. Only needed for `"auto"` text and background automation; interactive MCP use runs keyless. Keys resolve from env/`.env` first, then `config/settings.json`. |
@@ -176,40 +146,11 @@ An LLM key is optional: interactive MCP use needs none (your agent writes the te
 
 Full schema: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md). Starter templates: [`presets/`](presets/) (offered as wizard choices by `x-use init`).
 
-## Recommended proxy providers
+## Recommended proxy provider
 
-X's per-IP detection kills automation at scale. A quality proxy provider keeps a multi-account setup running reliably. The providers below are tested and recommended.
+Multi-account automation needs quality residential proxies — X's per-IP detection kills datacenter IPs fast. We use and recommend ScrapingAnt (5% off with code `TWI_AUTO`):
 
-### ScrapingAnt (featured)
-
-Private residential network with premium-grade IPs, not resold traffic. Supports the sticky sessions that X's IP consistency checks require.
-
-<table>
-<tr>
-<td align="center">
-<a href="https://scrapingant.com/residential-proxies?ref=mdkzote">
-<img src="https://i.ibb.co/mrK3tv4g/Screenshot-2026-05-08-at-14-17-29.png" alt="ScrapingAnt Residential Proxies" width="350" />
-</a>  <br/><a href="https://scrapingant.com/residential-proxies?ref=mdkzote">Top-notch, fast residential ScrapingAnt’s proxies for best performance</a>
-
-</td>
-<td align="center">
-<a href="https://scrapingant.com/datacenter-proxies?ref=mdkzote">
-<img src="https://i.ibb.co/ch0cFtPm/Screenshot-2026-05-08-at-14-17-46.png" alt="ScrapingAnt Datacenter Proxies" width="350" />
-</a>
-  <br/><a href="https://scrapingant.com/datacenter-proxies?ref=mdkzote">Affordable datacenter proxies for cost-effective operations</a>
-
-</td>
-</tr>
-</table>
-> 5% discount for x-use users: apply code `TWI_AUTO` at checkout.
-
-### RapidProxy
-
-[RapidProxy](https://www.rapidproxy.io/?ref=aut)
-
-<img src="https://i.ibb.co/TqYSs4yr/image-10.png" alt="RapidProxy Banner" width="300" />
-
-Dynamic and static residential proxies with free testing and unlimited, non-expiring traffic.
+<a href="https://scrapingant.com/residential-proxies?ref=mdkzote"><img src="https://i.ibb.co/mrK3tv4g/Screenshot-2026-05-08-at-14-17-29.png" alt="ScrapingAnt Residential Proxies" width="250" /></a>
 
 ## Responsible use
 

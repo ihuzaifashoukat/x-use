@@ -11,7 +11,7 @@ settings.json
   - api_key, base_url, model — the single OpenAI-compatible LLM client. Every major provider (OpenAI, OpenRouter, Azure's OpenAI-compatible endpoint, Gemini's OpenAI-compatible endpoint, local vLLM/Ollama) speaks this API; base_url selects which one you are talking to.
   - Environment override: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` — from the process environment or a `.env` file at the project root (see `.env.example`) — take precedence over the values here: **env > settings.json**.
   - Placeholder values (e.g. `YOUR_OPENAI_API_KEY`) are rejected from BOTH sources; with no valid key the client is simply not initialized and server-side generation is disabled (interactive MCP use does not need it — the calling agent writes the text). Key values are never logged — logs state only which source supplied a key.
-  - Only used by `"auto"` text generation, structured analysis, and background automation (run_cycle, pipelines). All interactive MCP tools accept explicit text and work keyless.
+  - Only used by `"auto"` text generation, structured analysis, the composite MCP tools (`research_and_stage`, `draft_post_variations`), and background automation (run_cycle, pipelines). All other interactive MCP tools accept explicit text and work keyless.
 - api_keys (legacy)
   - openai_api_key is honored as a last-resort fallback for the llm client key (after env and llm.api_key).
   - gemini_api_key, azure_openai_api_key, azure_openai_endpoint, azure_openai_deployment, azure_api_version: ignored with a one-time warning — move to the `llm` block.
@@ -56,6 +56,7 @@ Notes
   - proxy_pools: { name: [ "http://user:${ENV}@host:port", ... ] }
   - proxy_pool_strategy: hash|round_robin
   - proxy_pool_state_file: path for round-robin counters
+  - Pool management surface: the `list_proxies`, `add_proxy`, `remove_proxy`, and `test_proxy` MCP tools manage these pools. Pools remain editable by hand; MCP writes are validated, backed up (`config/backups/`), and atomic, and every credential is masked (`scheme://***@host:port`) in tool responses.
   - window_size, driver_options, timeouts
   - use_undetected_chromedriver: bool (Chrome only)
   - enable_stealth: bool (Chrome only)
@@ -79,6 +80,13 @@ Notes
   - auto_drain.max_actions_per_account: per-account budget per tick. Default `3`.
   - Queued items execute only via an explicit `process_queue` call or the auto-drain worker. Daily caps and pacing apply on both paths.
 
+MCP media behavior (v2.3 read tools: `get_tweet`, `prepare_reply`, `search_tweets`)
+
+- include_images: per-tool default — `true` for `get_tweet` and `prepare_reply`, `false` (opt-in) for `search_tweets`. When on, photos additionally attach as MCP image content so a vision-capable client sees them.
+- Bounds: up to 4 photos per tweet; the first photo of up to 5 tweets per search.
+- Re-encode: each fetched photo is converted to JPEG, max 1024px on the long edge, max 200KB; fetch timeout 5s. Failed fetches are skipped, never errors.
+- Fallback: the JSON envelope always carries the typed `media` list (photos with alt text; videos as poster + URL only), so clients without image support lose nothing.
+
 accounts.json (per account)
 
 - account_id: string
@@ -88,6 +96,7 @@ accounts.json (per account)
 - proxy: URL or "pool:<pool_name>"
 - post_to_community: bool, community_id: string?, community_name: string?
 - target_keywords or target_keywords_override: [strings]
+- persona: string (optional, max 4000 chars) — freeform markdown describing the account's voice/engagement style; returned by `get_tweet`/`prepare_reply` and prepended to server-side LLM prompts. Starter presets in `presets/personas/`.
 - competitor_profiles or competitor_profiles_override: [profile URLs] (required for rewrite-based posting)
 - news_sites(_override): [URLs] (optional)
 - research_paper_sites(_override): [URLs] (optional)

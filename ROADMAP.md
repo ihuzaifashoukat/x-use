@@ -40,6 +40,7 @@ The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip 
 - [x] Lazy per-account browser session pool with idle timeout, so MCP calls stay fast and never hang the client
 - [x] **v2.1 MCP expansion** — account management tools (add/update/pause/remove with validated atomic writes), a persistent scheduled-action queue (`queue_post`, `queue_engagement`, `process_queue`, opt-in `auto_drain` worker) with jittered pacing and daily caps, and support tools (draft listing/rejection, run status, account health)
 - [x] **v2.2 agent-native LLM** — one OpenAI-compatible client (`llm`: api_key/base_url/model) replaces the gemini/openai/azure provider stack; interactive MCP use runs keyless (the calling agent writes the text — new `prepare_reply` context tool), server-side LLM only powers `"auto"` text and background automation
+- [x] **v2.3 agent media + skills** — typed media on tweets with photos returned as MCP `ImageContent` on the read tools (new `get_tweet`; `prepare_reply`/`search_tweets` gain `include_images`), freeform account `persona`, composite draft-staging tools (`research_and_stage`, `draft_post_variations`), proxy pool management tools (`list_proxies`/`add_proxy`/`remove_proxy`/`test_proxy`), and a bundled 5-skill agent pack with a plugin marketplace plus one-prompt setup (`docs/SETUP_PROMPT.md`). 25 → 32 tools
 
 ### Config hygiene & docs
 
@@ -77,6 +78,21 @@ Turn x-use from a tool into a platform you can extend without forking.
 - [ ] **Selector self-healing** — headless smoke tests in CI that detect X UI selector breakage early, plus fallback selector strategies, so UI changes get caught by automation instead of by your accounts
 - [ ] **Prometheus-compatible metrics endpoint** — scrape run counts, action outcomes, and error rates into Grafana or any Prometheus stack
 - [ ] Community persona and preset contributions folded into releases on a regular cadence
+
+---
+
+## v2.4 — threads & video transcription
+
+- [ ] Read and post threads (multi-tweet compositions) through the MCP tools
+- [ ] Local video transcription with faster-whisper as an optional `[media]` extra, so agents can read video content keyless
+
+---
+
+## v2.5 — background workflows
+
+- [ ] Recurring per-account routines (scheduled engagement/content runs without a client attached)
+- [ ] OS scheduler integration via `x-use schedule install`
+- [ ] Prometheus metrics endpoint for run counts, action outcomes, and error rates
 
 ---
 
