@@ -41,7 +41,7 @@ class LLMService:
         model = (call_params.pop("model_name", None)
                  or call_params.pop("model", None)
                  or self.default_model)
-        call_params.setdefault("max_tokens", 250)
+        call_params.setdefault("max_tokens", 1200)  # reasoning-model headroom
         built_messages = messages if messages is not None else (
             ([{"role": "system", "content": system_prompt}] if system_prompt else [])
             + [{"role": "user", "content": prompt}]
@@ -49,7 +49,18 @@ class LLMService:
         try:
             response = await self.client.chat.completions.create(
                 model=model, messages=built_messages, **call_params)
-            return (response.choices[0].message.content or "").strip()
+            text = (response.choices[0].message.content or "").strip()
+            if not text:
+                # Empty content with no exception usually means the completion
+                # budget was consumed by hidden reasoning tokens (finish_reason
+                # "length") — raise max_tokens, don't retry as-is.
+                logger.warning(
+                    "LLM returned empty content (model=%s, finish_reason=%s, max_tokens=%s).",
+                    model,
+                    getattr(response.choices[0], "finish_reason", None),
+                    call_params.get("max_tokens"),
+                )
+            return text
         except Exception as e:
             logger.error("LLM generation failed: %s", e, exc_info=True)
             return None

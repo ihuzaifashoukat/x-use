@@ -56,7 +56,7 @@ async def test_uses_configured_model_and_builds_messages(monkeypatch, make_confi
     assert text == "some text"
     call = client.chat.completions.calls[0]
     assert call["model"] == "cfg-model"
-    assert call["max_tokens"] == 250  # default
+    assert call["max_tokens"] == 1200  # default (reasoning-model headroom)
     assert call["messages"] == [
         {"role": "system", "content": "be terse"},
         {"role": "user", "content": "write a post"},
@@ -79,6 +79,24 @@ async def test_api_error_returns_none(monkeypatch, make_config_loader):
     client = FakeClient([RuntimeError("provider down")])
     service = make_service(monkeypatch, make_config_loader, client)
     assert await service.generate_text("hi") is None
+
+
+def test_default_max_tokens_has_reasoning_headroom():
+    """Reasoning models (e.g. kimi-k3) burn completion budget on hidden
+    reasoning tokens; the old 150 default starved replies to empty (live
+    finding, v2.3)."""
+    from xuse.models import LLMSettings
+    assert LLMSettings().max_tokens == 1200
+
+
+@pytest.mark.asyncio
+async def test_empty_content_returns_empty_and_warns(monkeypatch, make_config_loader, caplog):
+    client = FakeClient([""])
+    service = make_service(monkeypatch, make_config_loader, client)
+    with caplog.at_level("WARNING"):
+        text = await service.generate_text("hi")
+    assert text == ""
+    assert any("empty content" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio

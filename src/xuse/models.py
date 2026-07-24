@@ -18,7 +18,10 @@ class LLMSettings(BaseModel):
     # serialized models still validate.
     service_preference: Optional[str] = Field(None, description="DEPRECATED, ignored — single OpenAI-compatible client")
     model_name_override: Optional[str] = Field(None, description="Override for the configured llm.model for this context")
-    max_tokens: int = 150
+    # Completion cap. Reasoning models (e.g. kimi-k3) burn budget on hidden
+    # reasoning tokens — the old 150 default starved replies to empty (live
+    # finding, v2.3). It's a cap, not a target; non-reasoning models stop early.
+    max_tokens: int = 1200
     temperature: Optional[float] = 0.7
     # Add other common LLM parameters as needed
 
