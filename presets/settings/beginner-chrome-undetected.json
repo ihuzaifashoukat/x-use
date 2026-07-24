@@ -12,13 +12,24 @@
     "media_directory": "media_files",
     "processed_tweets_file": "processed_tweets_log.csv",
     "analysis_config": {
-      "enable_relevance_filter": {"competitor_reposts": true, "likes": true, "keyword_replies": false},
-      "thresholds": {"competitor_reposts_min": 0.4, "likes_min": 0.3}
+      "enable_relevance_filter": {
+        "competitor_reposts": true,
+        "likes": true,
+        "keyword_replies": false
+      },
+      "thresholds": {
+        "competitor_reposts_min": 0.4,
+        "likes_min": 0.3
+      }
     },
     "engagement_decision": {
       "enabled": true,
       "use_sentiment": true,
-      "thresholds": {"quote_min": 0.75, "retweet_min": 0.55, "repost_min": 0.4}
+      "thresholds": {
+        "quote_min": 0.75,
+        "retweet_min": 0.55,
+        "repost_min": 0.4
+      }
     },
     "action_config": {
       "min_delay_between_actions_seconds": 60,
@@ -31,10 +42,18 @@
       "enable_liking_tweets": true,
       "max_likes_per_run": 4,
       "enable_thread_analysis": true,
-      "llm_settings_for_post": {"service_preference": "openai", "model_name_override": "gpt-4o", "max_tokens": 220, "temperature": 0.68}
+      "llm_settings_for_post": {
+        "service_preference": "openai",
+        "model_name_override": "gpt-4o",
+        "max_tokens": 1200,
+        "temperature": 0.68
+      }
     }
   },
-  "logging": {"level": "INFO", "format": "%(asctime)s - %(levelname)s - %(module)s - %(message)s"},
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(levelname)s - %(module)s - %(message)s"
+  },
   "browser_settings": {
     "type": "chrome",
     "headless": true,

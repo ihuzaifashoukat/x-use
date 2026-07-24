@@ -17,7 +17,7 @@
     "llm_settings_override": {
       "service_preference": "gemini",
       "model_name_override": "gemini-2.5-flash",
-      "max_tokens": 1000,
+      "max_tokens": 1200,
       "temperature": 0.7
     },
     "action_config_override": {
@@ -48,7 +48,7 @@
       "llm_settings_for_post": {
         "service_preference": "gemini",
         "model_name_override": "gemini-2.5-flash",
-        "max_tokens": 1000,
+        "max_tokens": 1200,
         "temperature": 0.72
       },
       "enable_keyword_retweets": true,

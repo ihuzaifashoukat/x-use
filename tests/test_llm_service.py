@@ -12,8 +12,9 @@ class _Msg:
 
 
 class _Resp:
-    def __init__(self, content):
-        self.choices = [type("C", (), {"message": _Msg(content)})()]
+    def __init__(self, content, finish_reason="stop"):
+        self.choices = [type("C", (), {"message": _Msg(content),
+                                     "finish_reason": finish_reason})()]
 
 
 class FakeCompletions:
@@ -26,6 +27,8 @@ class FakeCompletions:
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
+        if isinstance(outcome, tuple):
+            return _Resp(outcome[0], outcome[1])
         return _Resp(outcome)
 
 
@@ -97,6 +100,20 @@ async def test_empty_content_returns_empty_and_warns(monkeypatch, make_config_lo
         text = await service.generate_text("hi")
     assert text == ""
     assert any("empty content" in r.message for r in caplog.records)
+    assert len(client.chat.completions.calls) == 1  # finish_reason=stop: no retry
+
+
+@pytest.mark.asyncio
+async def test_length_starvation_retries_with_bigger_budget(monkeypatch, make_config_loader):
+    """Empty content with finish_reason='length' (reasoning models burning the
+    budget on hidden tokens) retries once with max(doubled, 1200)."""
+    client = FakeClient([("", "length"), "recovered reply"])
+    service = make_service(monkeypatch, make_config_loader, client)
+    text = await service.generate_text("reply", max_tokens=150)
+    assert text == "recovered reply"
+    first, second = client.chat.completions.calls
+    assert first["max_tokens"] == 150
+    assert second["max_tokens"] == 1200  # max(2*150, 1200)
 
 
 @pytest.mark.asyncio

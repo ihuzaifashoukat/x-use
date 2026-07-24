@@ -40,10 +40,9 @@
       "llm_settings_for_post": {
         "service_preference": "openai",
         "model_name_override": "gpt-4o",
-        "max_tokens": 220,
+        "max_tokens": 1200,
         "temperature": 0.68
       }
     }
   }
 ]
-

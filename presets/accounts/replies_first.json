@@ -41,7 +41,7 @@
       "llm_settings_for_reply": {
         "service_preference": "gemini",
         "model_name_override": "gemini-1.5-flash-latest",
-        "max_tokens": 140,
+        "max_tokens": 1200,
         "temperature": 0.6
       }
     }
