@@ -15,8 +15,10 @@ from xuse.mcp.sessions import SessionError, SessionPool
 from xuse.mcp.drafts import DraftStore
 
 from helpers import (  # noqa: F401 — imported fixtures register for this module
+    FakeBrowserManager,
     FakeMetrics,
     accounts,
+    assert_error_envelope,
     browser_factory,
     call_tool,
     config_loader,
@@ -121,3 +123,67 @@ async def test_close_all_closes_every_session_and_seals_pool(session_pool, brows
     assert list(session_pool.active_accounts) == []
     with pytest.raises(SessionError, match="closed"):
         await session_pool.acquire("acc1")
+
+
+@pytest.mark.asyncio
+async def test_close_waits_for_in_flight_action(session_pool, browser_factory):
+    """close() must wait out an action holding the session lock instead of
+    killing the browser mid-write (account tools close warm sessions while a
+    drain may be using them)."""
+    entry = await session_pool.acquire("acc1")
+    manager = browser_factory.created[0]
+    async with entry.lock:  # simulate an in-flight tool action
+        close_task = asyncio.create_task(session_pool.close("acc1"))
+        await asyncio.sleep(0.05)
+        assert not close_task.done()
+        assert manager.closed is False
+    await asyncio.wait_for(close_task, timeout=5)
+    assert manager.closed is True
+    assert session_pool.entry_for("acc1") is None
+
+
+@pytest.mark.asyncio
+async def test_cold_start_timeout_closes_late_started_browser(config_loader):
+    """A browser that finishes starting after the cold-start timeout must be
+    closed by the done callback, not leaked as a zombie process."""
+    started = []
+
+    def slow_factory(account_dict):
+        time.sleep(0.2)
+        manager = FakeBrowserManager()
+        started.append(manager)
+        return manager
+
+    pool = SessionPool(config_loader, cold_start_timeout_seconds=0.05,
+                       browser_factory=slow_factory)
+    with pytest.raises(SessionError, match="timed out"):
+        await pool.acquire("acc1")
+    await asyncio.sleep(0.5)  # startup thread finishes (~0.2s), callback closes
+    assert started and started[0].driver_started is True
+    assert started[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_direct_write_refuses_paused_account(make_config_loader, drafts_path, browser_factory):
+    """Executors enforce is_active=false on the immediate path too — pause
+    must not be bypassable via direct-mode writes."""
+    loader = make_config_loader(settings={}, accounts=[make_account("acc1", is_active=False)])
+    pool = SessionPool(loader, browser_factory=browser_factory)
+    server = create_server(config_loader=loader, session_pool=pool,
+                           draft_store=DraftStore(drafts_path), draft_mode=False)
+    result = await call_tool(server, "post_tweet", {"account": "acc1", "text": "hello"})
+    assert_error_envelope(result, "paused")
+    assert browser_factory.created == []
+
+
+@pytest.mark.asyncio
+async def test_approve_draft_refuses_paused_account(mcp_server, browser_factory):
+    """A draft staged while active must refuse to execute after the account
+    is paused."""
+    draft = await call_tool(mcp_server, "post_tweet", {"account": "acc1", "text": "staged"})
+    assert draft["ok"] is True
+    paused = await call_tool(mcp_server, "set_account_active", {"account": "acc1", "active": False})
+    assert paused["ok"] is True
+    result = await call_tool(mcp_server, "approve_draft", {"draft_id": draft["draft_id"]})
+    assert_error_envelope(result, "paused")
+    assert browser_factory.created == []

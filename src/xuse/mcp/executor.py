@@ -95,6 +95,17 @@ def resolve_account(ctx: Ctx, account: Optional[str]) -> Tuple[str, Dict[str, An
     return account_id, raw, model
 
 
+def require_active(raw: Dict[str, Any], account_id: str) -> None:
+    """Paused accounts (is_active=false) must never execute write actions,
+    on any path — direct mode, draft approval, or queue drain. Queue
+    enqueue and drain-all have their own gates; this is the execution-level
+    belt that makes pause semantics consistent everywhere."""
+    if not raw.get("is_active", True):
+        raise ToolError(
+            f"Account '{account_id}' is paused (is_active=false). "
+            "Re-enable it with set_account_active before running write actions.")
+
+
 def current_action_config(ctx: Ctx, account: AccountConfig) -> ActionConfig:
     """Per-account action_config wins over the global default (NFR-7)."""
     if account.action_config is not None:

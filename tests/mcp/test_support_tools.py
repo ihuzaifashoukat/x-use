@@ -93,3 +93,28 @@ async def test_get_account_health_aggregates(mcp_server):
 async def test_get_account_health_unknown_account(mcp_server):
     result = await call_tool(mcp_server, "get_account_health", {"account": "ghost"})
     assert_error_envelope(result, "ghost")
+
+
+@pytest.mark.asyncio
+async def test_health_reports_invalid_config_instead_of_failing(
+    make_config_loader, drafts_path, browser_factory
+):
+    """An account whose config fails validation must be REPORTED by the
+    health tool (config.valid=false with the error), not raised as a tool
+    error — surfacing that is the point of a health check."""
+    from xuse.mcp.drafts import DraftStore
+    from xuse.mcp.server import create_server
+    from xuse.mcp.sessions import SessionPool
+
+    from helpers import make_account  # local import: not a fixture here
+
+    bad = make_account("bad1", target_keywords="not-a-list")  # List[str] expected
+    loader = make_config_loader(settings={}, accounts=[bad])
+    pool = SessionPool(loader, browser_factory=browser_factory)
+    server = create_server(config_loader=loader, session_pool=pool,
+                           draft_store=DraftStore(drafts_path))
+    result = await call_tool(server, "get_account_health", {"account": "bad1"})
+    assert result["ok"] is True
+    assert result["config"]["valid"] is False
+    assert result["config"]["error"]
+    assert result["config"]["is_active"] is True

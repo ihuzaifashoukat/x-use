@@ -109,6 +109,12 @@ class DraftStore:
                     except Exception:
                         logger.warning("Skipping malformed draft line in %s", self._path)
                         continue
+                    if draft.status == "approved":
+                        # Crashed between approval and execution completing —
+                        # same recovery as the queue's processing->pending
+                        # reset: back to pending so it can be approved again
+                        # (executor-side dedup still applies on re-approval).
+                        draft.status = "pending"
                     self._drafts[draft.draft_id] = draft  # last write wins
             logger.info("Loaded %d draft(s) from %s", len(self._drafts), self._path)
         except Exception:

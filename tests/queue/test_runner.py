@@ -1,4 +1,5 @@
 """QueueRunner: drain order, pacing, caps, backoff. Scripted fakes only."""
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -198,3 +199,35 @@ async def test_drain_all_accounts_respects_account_filter(tmp_path):
     report = await runner.drain(None, 5)
     assert report.succeeded == 1
     assert store.get(store.list(account="b")[0].queue_id).status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_drain_is_refused(tmp_path):
+    """A second drain while one is mid-flight must not execute anything:
+    both would snapshot the same pending items and double-execute."""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = []
+
+    async def blocking_executor(item):
+        calls.append(item.queue_id)
+        started.set()
+        await release.wait()
+        return {"queue_id": item.queue_id, "success": True}
+
+    store, runner = make_runner(tmp_path, executor=blocking_executor)
+    item = add(store, key="like_acc1_t1")
+    first = asyncio.create_task(runner.drain("acc1", 5))
+    await started.wait()  # first drain is inside the executor, holding the lock
+
+    second = await runner.drain("acc1", 5)
+    assert second.already_running is True
+    assert second.succeeded == 0
+    assert second.executed == []
+
+    release.set()
+    report = await first
+    assert report.already_running is False
+    assert report.succeeded == 1
+    assert calls == [item.queue_id]
+    assert store.get(item.queue_id).status == "done"

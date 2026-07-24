@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 from xuse.core.config_loader import PROJECT_ROOT
 from xuse.doctor import check_cookie_data
+from xuse.models import AccountConfig
 
 from . import executor as ex
 from .executor import Ctx, ToolError
@@ -89,10 +90,20 @@ def register_support_tools(server, ctx: Ctx) -> None:
     async def get_account_health(account: str) -> Dict[str, Any]:
         """Read-only health snapshot for one account: config presence,
         cookie-file validity, metrics counters, warm-session state, queue
-        depth, pending drafts. Never starts a browser."""
-        account_id, raw, _ = ex.resolve_account(ctx, account)
+        depth, pending drafts. Never starts a browser. A config that fails
+        validation is REPORTED (config.valid=false with the error), not
+        raised — surfacing that is the point of a health check."""
+        raw = ctx.session_pool.find_account_dict(account)  # SessionError if unknown
+        account_id = raw.get("account_id", account)
         if not _SAFE_ACCOUNT_ID.fullmatch(account_id):
             raise ToolError(f"Invalid account id: {account_id!r}")
+        config_info: Dict[str, Any] = {"is_active": bool(raw.get("is_active", True))}
+        try:
+            AccountConfig.model_validate(raw)
+            config_info["valid"] = True
+        except Exception as e:
+            config_info["valid"] = False
+            config_info["error"] = ex.sanitize_text(e)
         cookies_info: Dict[str, Any]
         if raw.get("cookies"):
             cookies_info = {"configured": True, "valid": True, "problems": []}
@@ -126,7 +137,7 @@ def register_support_tools(server, ctx: Ctx) -> None:
         pending_drafts = len([d for d in ctx.draft_store.list(status="pending")
                               if d.account == account_id])
         return ok_(account=account_id,
-                   config={"is_active": bool(raw.get("is_active", True))},
+                   config=config_info,
                    cookies=cookies_info,
                    metrics=summary or {"counters": {}},
                    session={"warm": entry is not None},

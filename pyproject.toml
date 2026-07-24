@@ -33,7 +33,7 @@ dependencies = [
     "undetected-chromedriver",
     "selenium-stealth",
     "typer>=0.12",
-    "mcp>=1,<2",
+    "mcp>=1.6,<2",  # 1.6 is the first release with FastMCP lifespan support
 ]
 
 [project.optional-dependencies]

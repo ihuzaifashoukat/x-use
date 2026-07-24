@@ -28,7 +28,8 @@ async def exec_post(
     media: Optional[List[str]] = None,
     community: Optional[str] = None,
 ) -> Dict[str, Any]:
-    account_id, _, model = ex.resolve_account(ctx, account_id)
+    account_id, raw, model = ex.resolve_account(ctx, account_id)
+    ex.require_active(raw, account_id)
     action_config = ex.current_action_config(ctx, model)
     if community:
         model = model.model_copy(update={"post_to_community": True, "community_id": community})
@@ -60,7 +61,8 @@ async def exec_reply(
     tweet_id: Optional[str] = None,
     text_content: str = "",
 ) -> Dict[str, Any]:
-    account_id, _, model = ex.resolve_account(ctx, account_id)
+    account_id, raw, model = ex.resolve_account(ctx, account_id)
+    ex.require_active(raw, account_id)
     action_config = ex.current_action_config(ctx, model)
     tweet_id = tweet_id or ex.tweet_id_from_url(tweet_url)
     if not tweet_id:
@@ -87,7 +89,8 @@ async def exec_reply(
 
 
 async def exec_like(ctx: Ctx, account_id: str, tweet_id: str, tweet_url: Optional[str]) -> Dict[str, Any]:
-    account_id, _, model = ex.resolve_account(ctx, account_id)
+    account_id, raw, model = ex.resolve_account(ctx, account_id)
+    ex.require_active(raw, account_id)
     action_config = ex.current_action_config(ctx, model)
     dedup_key = f"like_{account_id}_{tweet_id}"
     if ex.is_processed(ctx, dedup_key):
@@ -109,7 +112,8 @@ async def exec_like(ctx: Ctx, account_id: str, tweet_id: str, tweet_url: Optiona
 
 async def exec_retweet(ctx: Ctx, account_id: str, tweet_id: str, tweet_url: Optional[str],
                        text_content: str = "") -> Dict[str, Any]:
-    account_id, _, model = ex.resolve_account(ctx, account_id)
+    account_id, raw, model = ex.resolve_account(ctx, account_id)
+    ex.require_active(raw, account_id)
     action_config = ex.current_action_config(ctx, model)
     dedup_key = f"retweet_{account_id}_{tweet_id}"
     if ex.is_processed(ctx, dedup_key):

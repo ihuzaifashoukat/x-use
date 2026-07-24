@@ -121,15 +121,27 @@ class SessionPool:
             finally:
                 entry.touch()
 
-    async def close(self, account_id: str) -> None:
+    async def close(self, account_id: str, *, wait: bool = True) -> None:
+        # Pop first so no new caller can attach to the dying entry, then wait
+        # out any in-flight action: closing the driver underneath an active
+        # tool call would kill the browser mid-write (account tools close
+        # warm sessions on update/pause/remove, possibly during a drain).
         entry = self._entries.pop(account_id, None)
         if entry is None:
             return
+        if wait:
+            # Shutdown (close_all) passes wait=False: the server loop is
+            # already torn down by then, and a lock abandoned mid-hold on a
+            # dead loop would otherwise hang the cleanup forever.
+            await entry.lock.acquire()
         try:
             await asyncio.to_thread(entry.browser_manager.close_driver)
             logger.info("Closed browser session for account '%s'.", account_id)
         except Exception:
             logger.exception("Error closing browser session for '%s'.", account_id)
+        finally:
+            if wait and entry.lock.locked():
+                entry.lock.release()
 
     async def close_all(self) -> None:
         """Close every session and stop the reaper. Safe to call once at shutdown."""
@@ -143,7 +155,7 @@ class SessionPool:
             with suppress(asyncio.CancelledError, RuntimeError):
                 await task
         for account_id in list(self._entries.keys()):
-            await self.close(account_id)
+            await self.close(account_id, wait=False)
 
     # -- internals ----------------------------------------------------------
 
@@ -158,11 +170,17 @@ class SessionPool:
             manager.get_driver()  # starts the browser and applies cookie login
             return manager
 
+        # Shield the startup thread from the timeout: wait_for cannot kill a
+        # running thread, and an unshielded cancellation would drop the future
+        # — the browser would eventually start with no handle and leak. The
+        # done callback closes any browser that finishes after the timeout.
+        start_future = asyncio.ensure_future(asyncio.to_thread(_start))
         try:
             manager = await asyncio.wait_for(
-                asyncio.to_thread(_start), timeout=self.cold_start_timeout_seconds
+                asyncio.shield(start_future), timeout=self.cold_start_timeout_seconds
             )
         except asyncio.TimeoutError:
+            start_future.add_done_callback(self._close_late_started_browser)
             raise SessionError(
                 f"Browser cold start for account '{account_id}' timed out after "
                 f"{self.cold_start_timeout_seconds:.0f}s."
@@ -173,6 +191,29 @@ class SessionPool:
             raise SessionError(f"Browser cold start failed for account '{account_id}': {e}") from e
         logger.info("Warm browser session ready for account '%s'.", account_id)
         return SessionEntry(browser_manager=manager)
+
+    def _close_late_started_browser(self, future: "asyncio.Future[Any]") -> None:
+        """Done callback for cold starts that outlived their timeout: close
+        the orphaned browser as soon as the startup thread delivers it."""
+        if future.cancelled():
+            return
+        try:
+            manager = future.result()
+        except Exception:
+            return  # startup failed on its own — nothing to close
+        logger.warning("Cold start finished after the timeout; closing the orphaned browser.")
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        asyncio.ensure_future(asyncio.to_thread(self._close_driver_quietly, manager))
+
+    @staticmethod
+    def _close_driver_quietly(manager: Any) -> None:
+        try:
+            manager.close_driver()
+        except Exception:
+            logger.exception("Failed to close late-started browser.")
 
     def _ensure_reaper(self) -> None:
         if self._closed:

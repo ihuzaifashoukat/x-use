@@ -130,3 +130,19 @@ async def test_drafts_persist_to_tmp_jsonl_and_reload(
     assert reloaded_after.get(draft["draft_id"]).status == "executed"
 
     await stubbed_ctx.session_pool.close_all()
+
+
+def test_approved_draft_resets_to_pending_on_reload(drafts_path):
+    """Crash recovery: a draft whose last persisted state is 'approved'
+    (server died between approval and execution) reloads as pending so it
+    can be approved again — same semantics as the queue's
+    processing->pending reset. Terminal states are untouched."""
+    store = DraftStore(drafts_path)
+    draft = store.create("acc1", "post_tweet", {"text": "crash me"}, "preview")
+    store.set_status(draft.draft_id, "approved")
+
+    reloaded = DraftStore(drafts_path)
+    assert reloaded.get(draft.draft_id).status == "pending"
+
+    store.set_status(draft.draft_id, "executed")
+    assert DraftStore(drafts_path).get(draft.draft_id).status == "executed"

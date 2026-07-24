@@ -28,6 +28,7 @@ def _default_now() -> datetime:
 
 class DrainReport(BaseModel):
     account: Optional[str] = None
+    already_running: bool = False
     executed: List[Dict[str, Any]] = Field(default_factory=list)
     succeeded: int = 0
     failed: int = 0
@@ -62,23 +63,34 @@ class QueueRunner:
         self.sleep_fn = sleep_fn
         self.jitter_fn = jitter_fn
         self.now_fn = now_fn
+        self._drain_lock = asyncio.Lock()
 
     async def drain(self, account_id: Optional[str] = None,
                     max_actions: Optional[int] = None) -> DrainReport:
         """Execute due items with pacing and caps. account_id=None drains
-        every account with due items (each bounded by max_actions)."""
-        budget = max(1, int(max_actions or self.config.max_actions_per_run))
-        if account_id:
-            accounts = [account_id]
-        else:
-            accounts = [
-                a for a in self.store.due_accounts(self.now_fn())
-                if self.account_filter is None or self.account_filter(a)
-            ]
-        report = DrainReport(account=account_id)
-        for acc in accounts:
-            await self._drain_account(acc, budget, report)
-        return report
+        every account with due items (each bounded by max_actions).
+
+        Only one drain may run at a time: a concurrent caller (a manual
+        process_queue overlapping an auto_drain tick, or two manual calls)
+        would otherwise snapshot the same pending items and execute them
+        twice. The second caller gets an immediate report with
+        already_running=True and nothing is executed."""
+        if self._drain_lock.locked():
+            logger.info("Drain already in progress; refusing a concurrent drain.")
+            return DrainReport(account=account_id, already_running=True)
+        async with self._drain_lock:
+            budget = max(1, int(max_actions or self.config.max_actions_per_run))
+            if account_id:
+                accounts = [account_id]
+            else:
+                accounts = [
+                    a for a in self.store.due_accounts(self.now_fn())
+                    if self.account_filter is None or self.account_filter(a)
+                ]
+            report = DrainReport(account=account_id)
+            for acc in accounts:
+                await self._drain_account(acc, budget, report)
+            return report
 
     async def _drain_account(self, account_id: str, budget: int,
                              report: DrainReport) -> None:
