@@ -24,8 +24,8 @@ X_ANALYTICS_VIEW_XPATH = (
 X_HASHTAG_LINKS_XPATH = "//a[contains(@href, 'src=hashtag_click')]"
 X_MENTION_LINKS_XPATH = "//div[@data-testid='tweetText']//a[contains(text(), '@')]"
 X_PROFILE_IMG_XPATH = "//div[@data-testid='Tweet-User-Avatar']//img"
-X_MEDIA_XPATH = (
-    "//div[@data-testid='tweetPhoto']//img | //div[contains(@data-testid, 'videoPlayer')]//video"
-)
+X_MEDIA_IMAGE_XPATH = "//div[@data-testid='tweetPhoto']//img"
+X_MEDIA_VIDEO_XPATH = "//div[contains(@data-testid, 'videoPlayer')]//video"
+X_MEDIA_XPATH = f"{X_MEDIA_IMAGE_XPATH} | {X_MEDIA_VIDEO_XPATH}"  # back-compat union
 X_VERIFIED_ICON_SVG = "//*[local-name()='svg' and @data-testid='icon-verified']"
 

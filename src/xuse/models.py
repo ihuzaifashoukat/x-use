@@ -153,11 +153,24 @@ class AccountConfig(BaseModel):
     community_id: Optional[str] = Field(default=None, description="The target community ID to post into (as used by X.com URLs).")
     community_name: Optional[str] = Field(default=None, description="Fallback community name to match in the audience picker if ID-based selection fails.")
 
+    # Freeform markdown the composing agent / server LLM reads as "who this
+    # account is and how it engages": voice, tone, topics, reply style, avoid-list.
+    persona: Optional[str] = Field(
+        default=None, max_length=4000,
+        description="Freeform persona/engagement-style notes for this account.",
+    )
+
 
 class TweetContent(BaseModel):
     text: str # Can be actual text or a prompt for LLM generation
     media_urls: Optional[List[HttpUrl]] = None # URLs of media to be downloaded/attached
     local_media_paths: Optional[List[str]] = None # Paths to already downloaded media
+
+
+class MediaItem(BaseModel):
+    type: Literal["image", "video"]
+    url: HttpUrl
+    alt_text: Optional[str] = None
 
 
 class ScrapedTweet(BaseModel):
@@ -181,7 +194,9 @@ class ScrapedTweet(BaseModel):
     profile_image_url: Optional[HttpUrl] = None
     
     # Media associated with the tweet
-    embedded_media_urls: Optional[List[HttpUrl]] = [] 
+    embedded_media_urls: Optional[List[HttpUrl]] = []
+    # Typed in-tweet media (photos with alt text, video posters). Avatars excluded.
+    media: List[MediaItem] = Field(default_factory=list)
     
     # Thread identification
     is_thread_candidate: Optional[bool] = Field(None, description="Initial assessment if tweet might be part of a thread based on simple heuristics from scraper.")

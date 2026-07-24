@@ -7,7 +7,7 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.remote.webelement import WebElement
 
-from ...models import ScrapedTweet
+from ...models import MediaItem, ScrapedTweet
 
 from .selectors import (
     THREAD_INDICATORS,
@@ -21,7 +21,8 @@ from .selectors import (
     X_HASHTAG_LINKS_XPATH,
     X_MENTION_LINKS_XPATH,
     X_PROFILE_IMG_XPATH,
-    X_MEDIA_XPATH,
+    X_MEDIA_IMAGE_XPATH,
+    X_MEDIA_VIDEO_XPATH,
     X_VERIFIED_ICON_SVG,
 )
 
@@ -138,12 +139,22 @@ def parse_tweet_card(card_element: WebElement, logger: logging.Logger) -> Option
         except (NoSuchElementException, StaleElementReferenceException):
             pass
 
-        embedded_media_urls: List[str] = []
-        media_elements = card_element.find_elements(By.XPATH, f".{X_MEDIA_XPATH}")
-        for media_el in media_elements:
-            src = media_el.get_attribute("src") or media_el.get_attribute("poster")
-            if src:
-                embedded_media_urls.append(src)
+        media_items: List[MediaItem] = []
+        seen_media_urls = set()
+        for img_el in card_element.find_elements(By.XPATH, f".{X_MEDIA_IMAGE_XPATH}"):
+            src = img_el.get_attribute("src")
+            if src and src not in seen_media_urls:
+                seen_media_urls.add(src)
+                media_items.append(
+                    MediaItem(type="image", url=src, alt_text=img_el.get_attribute("alt") or None)
+                )
+        for vid_el in card_element.find_elements(By.XPATH, f".{X_MEDIA_VIDEO_XPATH}"):
+            poster = vid_el.get_attribute("poster") or vid_el.get_attribute("src")
+            if poster and poster not in seen_media_urls:
+                seen_media_urls.add(poster)
+                media_items.append(MediaItem(type="video", url=poster, alt_text=None))
+
+        embedded_media_urls: List[str] = [str(m.url) for m in media_items]
 
         is_verified = False
         try:
@@ -174,7 +185,8 @@ def parse_tweet_card(card_element: WebElement, logger: logging.Logger) -> Option
             mentions=mentions,
             tweet_url=tweet_url,
             profile_image_url=profile_image_url,
-            embedded_media_urls=list(set(embedded_media_urls)),
+            embedded_media_urls=embedded_media_urls,
+            media=media_items,
             is_thread_candidate=is_thread_candidate,
         )
 

@@ -76,10 +76,12 @@ def full_card_mapping():
         q(S.X_PROFILE_IMG_XPATH): FakeElement(
             attrs={"src": "https://pbs.twimg.com/profile_images/x.jpg"}
         ),
-        q(S.X_MEDIA_XPATH): [
+        q(S.X_MEDIA_IMAGE_XPATH): [
             FakeElement(attrs={"src": "https://pbs.twimg.com/media/a.jpg"}),
-            FakeElement(attrs={"poster": "https://pbs.twimg.com/media/b.jpg"}),  # video: poster fallback
             FakeElement(attrs={"src": "https://pbs.twimg.com/media/a.jpg"}),  # duplicate -> deduped
+        ],
+        q(S.X_MEDIA_VIDEO_XPATH): [
+            FakeElement(attrs={"poster": "https://pbs.twimg.com/media/b.jpg"}),  # video: poster fallback
         ],
         q(S.X_VERIFIED_ICON_SVG): FakeElement(),
     }
@@ -230,3 +232,42 @@ class TestParseTweetCard:
         tweet = parse_tweet_card(FakeElement(mapping=mapping), logger)
         assert tweet is not None
         assert tweet.user_is_verified is False
+
+
+class TestMediaExtraction:
+    def test_typed_media_with_alt_text(self):
+        mapping = minimal_card_mapping()
+        mapping[q(S.X_MEDIA_IMAGE_XPATH)] = [
+            FakeElement(attrs={"src": "https://pbs.twimg.com/media/a.jpg", "alt": "a chart"}),
+            FakeElement(attrs={"src": "https://pbs.twimg.com/media/b.jpg", "alt": ""}),
+        ]
+        mapping[q(S.X_MEDIA_VIDEO_XPATH)] = [
+            FakeElement(attrs={"poster": "https://pbs.twimg.com/media/vid.jpg"}),
+        ]
+        tweet = parse_tweet_card(FakeElement(mapping=mapping), logger)
+
+        assert tweet is not None
+        assert [(m.type, str(m.url)) for m in tweet.media] == [
+            ("image", "https://pbs.twimg.com/media/a.jpg"),
+            ("image", "https://pbs.twimg.com/media/b.jpg"),
+            ("video", "https://pbs.twimg.com/media/vid.jpg"),
+        ]
+        assert tweet.media[0].alt_text == "a chart"
+        assert tweet.media[1].alt_text is None  # empty alt -> None
+        assert tweet.media[2].alt_text is None
+
+    def test_media_urls_deduped_by_url(self):
+        mapping = minimal_card_mapping()
+        mapping[q(S.X_MEDIA_IMAGE_XPATH)] = [
+            FakeElement(attrs={"src": "https://pbs.twimg.com/media/a.jpg"}),
+            FakeElement(attrs={"src": "https://pbs.twimg.com/media/a.jpg"}),
+        ]
+        tweet = parse_tweet_card(FakeElement(mapping=mapping), logger)
+        assert tweet is not None
+        assert len(tweet.media) == 1
+
+    def test_embedded_media_urls_unchanged_and_no_media_by_default(self):
+        tweet = parse_tweet_card(FakeElement(mapping=minimal_card_mapping()), logger)
+        assert tweet is not None
+        assert tweet.media == []
+        assert tweet.embedded_media_urls == []
