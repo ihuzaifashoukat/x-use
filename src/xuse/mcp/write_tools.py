@@ -116,6 +116,30 @@ def register_write_tools(server, ctx: Ctx) -> None:
 
     @server.tool()
     @guard
+    async def prepare_reply(account: str, tweet_url: str) -> Dict[str, Any]:
+        """Read-only reply context: fetch the tweet's content plus the
+        account's target keywords so YOUR model can write the reply itself —
+        no server-side LLM, nothing posted. Then pass your text to
+        reply_to_tweet(text=...) or queue_engagement(action="reply", text=...)."""
+        account_id, _, model = ex.resolve_account(ctx, account)
+        tweet_id = ex.tweet_id_from_url(tweet_url)
+        if not tweet_id:
+            raise ToolError(f"Could not parse a tweet id from URL: {tweet_url}")
+        original = await scrape_single_tweet(ctx, account_id, tweet_url, tweet_id)
+        return ok_(
+            account=account_id,
+            tweet_id=tweet_id,
+            tweet_url=tweet_url,
+            author=f"@{original.user_handle}" if original.user_handle else None,
+            text_content=original.text_content or "",
+            account_keywords=list(getattr(model, "target_keywords", None) or []),
+            max_reply_chars=ex.MAX_REPLY_CHARS,
+            message="Write the reply with your own model, then call "
+                    "reply_to_tweet or queue_engagement(action='reply') with the text.",
+        )
+
+    @server.tool()
+    @guard
     async def run_cycle(account: Optional[str] = None, pipelines: Optional[str] = None) -> Dict[str, Any]:
         """Run the legacy batch automation cycle in the background and return
         a run handle immediately (progress goes to the logs — this never

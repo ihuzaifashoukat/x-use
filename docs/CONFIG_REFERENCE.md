@@ -7,10 +7,14 @@ Overview
 
 settings.json
 
-- api_keys
-  - openai_api_key, gemini_api_key, azure_openai_api_key, azure_openai_endpoint, azure_openai_deployment, azure_api_version
-  - Environment override: `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `AZURE_OPENAI_API_KEY` — from the process environment or a `.env` file at the project root (see `.env.example`) — take precedence over the values here: **env > settings.json**. The override applies only to the three API keys; Azure endpoint/deployment/api_version stay in settings.json.
-  - Placeholder values (e.g. `YOUR_OPENAI_API_KEY`) are rejected from BOTH sources; a provider with no valid key is simply not initialized. Key values are never logged — logs state only which source (env var name or settings.json) supplied a key.
+- llm
+  - api_key, base_url, model — the single OpenAI-compatible LLM client. Every major provider (OpenAI, OpenRouter, Azure's OpenAI-compatible endpoint, Gemini's OpenAI-compatible endpoint, local vLLM/Ollama) speaks this API; base_url selects which one you are talking to.
+  - Environment override: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` — from the process environment or a `.env` file at the project root (see `.env.example`) — take precedence over the values here: **env > settings.json**.
+  - Placeholder values (e.g. `YOUR_OPENAI_API_KEY`) are rejected from BOTH sources; with no valid key the client is simply not initialized and server-side generation is disabled (interactive MCP use does not need it — the calling agent writes the text). Key values are never logged — logs state only which source supplied a key.
+  - Only used by `"auto"` text generation, structured analysis, and background automation (run_cycle, pipelines). All interactive MCP tools accept explicit text and work keyless.
+- api_keys (legacy)
+  - openai_api_key is honored as a last-resort fallback for the llm client key (after env and llm.api_key).
+  - gemini_api_key, azure_openai_api_key, azure_openai_endpoint, azure_openai_deployment, azure_api_version: ignored with a one-time warning — move to the `llm` block.
 - twitter_automation
   - response_interval_seconds: Base delay between actions.
   - media_directory: Folder for downloaded media.
@@ -87,7 +91,7 @@ accounts.json (per account)
 - competitor_profiles or competitor_profiles_override: [profile URLs] (required for rewrite-based posting)
 - news_sites(_override): [URLs] (optional)
 - research_paper_sites(_override): [URLs] (optional)
-- llm_settings_override: { service_preference, model_name_override, max_tokens, temperature }
+- llm_settings_override: { model_name_override, max_tokens, temperature } (service_preference is deprecated and ignored — single OpenAI-compatible client)
 - action_config_override: ActionConfig subset to override defaults, including:
   - enable_competitor_reposts, max_posts_per_competitor_run, repost_only_tweets_with_media,
     min_likes_for_repost_candidate, min_retweets_for_repost_candidate
@@ -98,13 +102,13 @@ accounts.json (per account)
   - Relevance filters: enable_relevance_filter_(competitor_reposts|likes|keyword_replies) and relevance_threshold_*
   - Decision logic: enable_engagement_decision, use_sentiment_in_decision,
     decision_quote_min, decision_retweet_min, decision_repost_min
-  - LLM action settings: llm_settings_for_post / reply / thread_analysis
+  - LLM action settings: llm_settings_for_post / reply / thread_analysis (service_preference deprecated; model_name_override overrides the configured llm.model)
   - Keyword engagement: enable_keyword_retweets, max_retweets_per_keyword_run
 
 Notes
 
 - Unknown fields are generally ignored; keep to the provided keys for predictable behavior.
-- `${VAR}` interpolation remains the mechanism for proxy strings only (e.g. `"http://user:${RESI_PASS}@host:port"` in `proxy_pools`); it reads the process environment and does not apply to any other config field. LLM API keys use the env-var override described under `api_keys` above.
+- `${VAR}` interpolation remains the mechanism for proxy strings only (e.g. `"http://user:${RESI_PASS}@host:port"` in `proxy_pools`); it reads the process environment and does not apply to any other config field. The LLM key uses the env-var override described under `llm` above.
 - For pools with env vars, ensure your shell exports them before running (`export RESI_PASS=...`).
 - Cookies must match `cookie_domain_url` domain; the app navigates there before injection.
 - Community posting: the app opens the “Choose audience” menu and selects by `community_id` (preferred) or visible `community_name`. It scrolls virtualized lists and uses JS-click fallbacks when needed.

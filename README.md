@@ -77,7 +77,9 @@ If `x-use` is not on your client's PATH, use the full path the installer printed
 
 ## MCP tools
 
-24 tools in four groups. Two safety gates: the immediate write tools run in draft mode by default (review, then `approve_draft`), and the queue only stores work until an explicit `process_queue` call (or the opt-in `auto_drain` worker) executes it with jittered pacing and daily caps.
+25 tools in four groups. Two safety gates: the immediate write tools run in draft mode by default (review, then `approve_draft`), and the queue only stores work until an explicit `process_queue` call (or the opt-in `auto_drain` worker) executes it with jittered pacing and daily caps.
+
+Interactive use needs no LLM key at all: your MCP client (Claude, Codex, ...) does the thinking and passes explicit text to the write tools. The optional server-side LLM (`llm` block in settings) only powers `"auto"` generation and background automation.
 
 Read-only and status:
 
@@ -87,6 +89,7 @@ Read-only and status:
 | `get_account(account)` | One account's masked config plus cookie-file status. |
 | `get_metrics(account)` | Counters and recent events for an account. |
 | `search_tweets(keywords, limit=10, account?)` | Search recent posts for a query. |
+| `prepare_reply(account, tweet_url)` | Fetch a tweet's content plus the account context so your agent can write the reply itself. No LLM, nothing posted. |
 | `list_queue(account?, status?)` | Queued actions with full payloads (exactly what will fire) plus per-status counts. |
 | `list_drafts(status?, account?, limit=20)` | Drafts, newest first, with filters. |
 | `get_draft(draft_id)` | One draft by id. |
@@ -99,8 +102,8 @@ Write tools (draft-gated):
 | Tool | What it does |
 |---|---|
 | `post_tweet(account, text, media?, community?)` | Post text/media, optionally into a community. |
-| `generate_and_post(account, topic)` | Generate a post with the configured LLM, then post it. |
-| `reply_to_tweet(account, tweet_url, text="auto")` | Reply with explicit text, or `"auto"` to generate from the tweet's content. |
+| `generate_and_post(account, topic)` | Generate a post with the server-side LLM (needs the `llm` block), then post it. Prefer `post_tweet` with your own text when driving from an MCP client. |
+| `reply_to_tweet(account, tweet_url, text="auto")` | Reply with explicit text, or `"auto"` to generate from the tweet's content via the server-side LLM. |
 | `engage(account, keywords, actions=["like"], max_actions=5)` | Relevance-gated likes/retweets on keyword results. |
 | `run_cycle(account?, pipelines?)` | Full orchestrator cycle in the background; returns a run handle. |
 | `approve_draft(draft_id)` | Execute a pending draft exactly once. |
@@ -144,10 +147,10 @@ The legacy `python src/main.py` entry point still works via a deprecation shim (
 
 | Area | What you get |
 |---|---|
-| MCP server | 24 tools over stdio on the official MCP Python SDK (`FastMCP`, pinned `mcp>=1,<2`): draft-gated writes, a persistent scheduled-action queue with daily caps, account management, and a lazy per-account browser session pool. |
+| MCP server | 25 tools over stdio on the official MCP Python SDK (`FastMCP`, pinned `mcp>=1.6,<2`): draft-gated writes, a persistent scheduled-action queue with daily caps, account management, and a lazy per-account browser session pool. |
 | Draft mode | On by default. Write tools build the full payload (including LLM-generated text), store a draft, and touch nothing until `approve_draft` runs. |
 | Multi-account engine | Post (including communities and media), reply, repost/quote, like, keyword search, and relevance-gated engagement. Per-account overrides for keywords, LLM settings, and action behavior. |
-| LLM generation | OpenAI, Azure OpenAI, or Gemini with structured JSON prompting and strict extraction. Keys resolve from env/`.env` first, then `config/settings.json`. |
+| LLM generation | One OpenAI-compatible client (`llm`: api_key, base_url, model) covers OpenAI, OpenRouter, Azure, Gemini, and local servers. Only needed for `"auto"` text and background automation; interactive MCP use runs keyless. Keys resolve from env/`.env` first, then `config/settings.json`. |
 | Stealth | undetected-chromedriver, selenium-stealth, randomized user agents, headless support. |
 | Proxies | Per-account proxy, named pools, hash or round-robin rotation, `${VAR}` env interpolation in proxy strings. |
 | Metrics | Per-account counters in `data/metrics/<account_id>.json` plus JSONL event logs in `logs/accounts/<account_id>.jsonl`. |
@@ -163,7 +166,7 @@ The legacy `python src/main.py` entry point still works via a deprecation shim (
 | Write safety | Draft mode **on by default**, explicit `approve_draft` gate | Usually posts directly |
 | Metrics | Per-account counters + JSONL event logs, readable via MCP | Varies |
 
-You still bring your own LLM key (OpenAI, Azure OpenAI, or Gemini) for content generation and analysis; that is the only key involved.
+An LLM key is optional: interactive MCP use needs none (your agent writes the text). For `"auto"` generation and background automation, set one OpenAI-compatible key (`llm.api_key` + `base_url` + `model`, or `OPENAI_API_KEY`/`OPENAI_BASE_URL`/`OPENAI_MODEL`); that is the only key involved.
 
 ## Configuration
 
@@ -219,7 +222,7 @@ pip install -e '.[dev]'
 pytest
 ```
 
-231 tests cover config loading and merging, dedup keys, LLM JSON extraction, tweet parsing, proxy pool selection, the MCP tool contract, drafts, sessions, the action queue, account writes, and the CLI; none of them needs a network or a browser. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the suite plus an import smoke check on Python 3.10/3.11/3.12.
+252 tests cover config loading and merging, dedup keys, LLM JSON extraction and the single-client service, tweet parsing, proxy pool selection, the MCP tool contract, drafts, sessions, the action queue, account writes, and the CLI; none of them needs a network or a browser. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the suite plus an import smoke check on Python 3.10/3.11/3.12.
 
 The v2.0 relaunch is merged; PyPI publishing and MCP directory submissions are the remaining Phase 1 items. Dashboard and Docker are Phase 2; personas, plugins, and selector self-healing are Phase 3. See [ROADMAP.md](ROADMAP.md).
 

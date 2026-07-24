@@ -40,11 +40,9 @@ ACCOUNTS_PRESET_BLURBS = {
 }
 
 ENV_KEYS = [
-    ("OPENAI_API_KEY", "OpenAI API key"),
-    ("GEMINI_API_KEY", "Gemini API key"),
-    ("AZURE_OPENAI_API_KEY", "Azure OpenAI API key"),
-    ("AZURE_OPENAI_ENDPOINT", "Azure OpenAI endpoint"),
-    ("AZURE_OPENAI_DEPLOYMENT", "Azure OpenAI deployment name"),
+    ("OPENAI_API_KEY", "LLM API key (any OpenAI-compatible provider: OpenAI, OpenRouter, Azure, Gemini, local)"),
+    ("OPENAI_BASE_URL", "LLM base URL (e.g. https://openrouter.ai/api/v1; empty = api.openai.com)"),
+    ("OPENAI_MODEL", "LLM model (e.g. openai/gpt-4o-mini; empty = gpt-4o-mini)"),
 ]
 
 
@@ -104,7 +102,7 @@ def _write_env(path: Path, updates: Dict[str, str]) -> None:
     existing = _load_env(path)
     existing.update(updates)
     lines = [
-        "# x-use secrets — loaded at runtime; overrides config/settings.json api_keys.",
+        "# x-use secrets — loaded at runtime; overrides the llm block in config/settings.json.",
         "# This file is gitignored. Never commit it.",
     ]
     lines += [f"{k}={v}" for k, v in existing.items()]

@@ -13,7 +13,7 @@ async def main_test():
         return
     llm = LLMService(config_loader=loader)
     prompt = "Write a short, engaging tweet about the future of AI in three sentences."
-    text = await llm.generate_text(prompt, service_preference='openai')
+    text = await llm.generate_text(prompt)
     if text:
         logging.info(f"Response: {text}")
     else:

@@ -21,13 +21,6 @@ from xuse.core.config_loader import CONFIG_DIR, PROJECT_ROOT, ConfigLoader
 
 logger = logging.getLogger(__name__)
 
-# Provider key locations: (label, settings.json api_keys entry, env-var override)
-LLM_PROVIDERS: List[Tuple[str, str, str]] = [
-    ("OpenAI", "openai_api_key", "OPENAI_API_KEY"),
-    ("Gemini", "gemini_api_key", "GEMINI_API_KEY"),
-    ("Azure OpenAI", "azure_openai_api_key", "AZURE_OPENAI_API_KEY"),
-]
-
 try:  # Reuse the engine's placeholder rejection when importable.
     from xuse.core.llm_service.clients import _is_api_key_valid
 except Exception:  # pragma: no cover - fallback for partial installs
@@ -200,26 +193,21 @@ def _check_cookies(accounts: List[Dict[str, Any]]) -> List[Check]:
 
 
 def _check_llm_keys(settings: Dict[str, Any]) -> List[Check]:
+    """Single OpenAI-compatible client: a key is optional (interactive MCP
+    use is keyless), so a missing key is SKIP, never FAIL."""
+    llm_block = settings.get("llm", {}) or {}
     api_keys = settings.get("api_keys", {}) or {}
-    checks: List[Check] = []
-    configured = 0
-    for label, settings_key, env_key in LLM_PROVIDERS:
-        env_val = os.environ.get(env_key)
-        if _is_api_key_valid(settings_key, env_val):
-            configured += 1
-            checks.append(Check(f"llm:{label}", "PASS", f"key from env:{env_key}"))
-        elif _is_api_key_valid(settings_key, api_keys.get(settings_key)):
-            configured += 1
-            checks.append(Check(f"llm:{label}", "PASS", "key from config/settings.json"))
-        else:
-            checks.append(Check(f"llm:{label}", "SKIP",
-                                "not configured (or placeholder)",
-                                f"set {env_key} in .env or api_keys.{settings_key} in config/settings.json"))
-    if configured == 0:
-        checks.append(Check("llm:any-provider", "FAIL",
-                            "no usable LLM API key for any provider",
-                            "run `x-use init` to store keys in .env"))
-    return checks
+    env_key = os.environ.get("OPENAI_API_KEY")
+    config_key = llm_block.get("api_key") or api_keys.get("openai_api_key")
+    base_url = os.environ.get("OPENAI_BASE_URL") or llm_block.get("base_url") or "api.openai.com"
+    model = os.environ.get("OPENAI_MODEL") or llm_block.get("model") or "gpt-4o-mini"
+    if _is_api_key_valid("openai_api_key", env_key):
+        return [Check("llm", "PASS", f"model={model}, base_url={base_url}, key from env:OPENAI_API_KEY")]
+    if _is_api_key_valid("openai_api_key", config_key):
+        return [Check("llm", "PASS", f"model={model}, base_url={base_url}, key from config/settings.json")]
+    return [Check("llm", "SKIP",
+                  "no LLM key — only needed for \"auto\" text and background automation",
+                  "set OPENAI_API_KEY (+ OPENAI_BASE_URL/OPENAI_MODEL) in .env or the llm block in config/settings.json")]
 
 
 def _redact_proxy(url: str) -> str:

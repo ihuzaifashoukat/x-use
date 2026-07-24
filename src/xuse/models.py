@@ -13,8 +13,11 @@ class AccountCookie(BaseModel):
     sameSite: Optional[Literal["Strict", "Lax", "None"]] = None
 
 class LLMSettings(BaseModel):
-    service_preference: Optional[str] = Field(None, description="Preferred LLM service for this context: 'gemini', 'openai', 'azure'")
-    model_name_override: Optional[str] = Field(None, description="Specific model name for the chosen service")
+    # DEPRECATED and ignored: the LLM client is a single OpenAI-compatible
+    # client now (settings.llm / OPENAI_BASE_URL). Kept so old configs and
+    # serialized models still validate.
+    service_preference: Optional[str] = Field(None, description="DEPRECATED, ignored — single OpenAI-compatible client")
+    model_name_override: Optional[str] = Field(None, description="Override for the configured llm.model for this context")
     max_tokens: int = 150
     temperature: Optional[float] = 0.7
     # Add other common LLM parameters as needed

@@ -1,4 +1,4 @@
-"""MCP contract tests: the server exposes exactly the 24 documented tools,
+"""MCP contract tests: the server exposes exactly the 25 documented tools,
 their schemas accept the documented parameters, and tool failures return
 structured error envelopes (``{"ok": false, "error": {...}}``) instead of
 raising through the server (NFR-1).
@@ -28,7 +28,7 @@ from helpers import (  # noqa: F401 — imported fixtures register for this modu
     session_pool,
 )
 
-# The 24 documented tools and the parameter names each must accept.
+# The 25 documented tools and the parameter names each must accept.
 EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "list_accounts": {"params": set(), "required": set()},
     "get_metrics": {"params": {"account"}, "required": {"account"}},
@@ -37,6 +37,7 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "post_tweet": {"params": {"account", "text", "media", "community"}, "required": {"account", "text"}},
     "generate_and_post": {"params": {"account", "topic"}, "required": {"account", "topic"}},
     "reply_to_tweet": {"params": {"account", "tweet_url", "text"}, "required": {"account", "tweet_url"}},
+    "prepare_reply": {"params": {"account", "tweet_url"}, "required": {"account", "tweet_url"}},
     "engage": {"params": {"account", "keywords", "actions", "max_actions"}, "required": {"account", "keywords"}},
     "run_cycle": {"params": {"account", "pipelines"}, "required": set()},
     "queue_post": {"params": {"account", "text", "topic", "media", "community", "not_before"},
@@ -63,7 +64,7 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
 
 
 @pytest.mark.asyncio
-async def test_server_registers_exactly_the_24_documented_tools(mcp_server):
+async def test_server_registers_exactly_the_25_documented_tools(mcp_server):
     tools = await mcp_server.list_tools()
     assert {t.name for t in tools} == set(EXPECTED_TOOLS)
 

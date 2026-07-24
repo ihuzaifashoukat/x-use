@@ -131,13 +131,13 @@ def get_llm(ctx: Ctx) -> LLMService:
 
 def require_llm(ctx: Ctx) -> LLMService:
     service = get_llm(ctx)
-    # clients is a dict of provider-name -> client-or-None; placeholder keys
-    # leave every value None (see llm_service.clients.initialize_clients).
-    clients = getattr(service, "clients", None) or {}
-    if not any(clients.values()):
+    # Single OpenAI-compatible client: None when no usable key is configured.
+    if getattr(service, "client", None) is None:
         raise ToolError(
-            "No LLM provider is configured (all API keys missing or placeholders). "
-            "Set a real key in config/settings.json api_keys or the environment."
+            "No LLM is configured for server-side generation. Set the 'llm' block "
+            "in config/settings.json (api_key, base_url, model) or OPENAI_API_KEY — "
+            "or pass explicit text and let your MCP client do the writing "
+            "(prepare_reply and search_tweets give it the context)."
         )
     return service
 

@@ -1,12 +1,4 @@
 {
-  "api_keys": {
-    "gemini_api_key": "YOUR_GEMINI_API_KEY_HERE",
-    "openai_api_key": "YOUR_OPENAI_API_KEY_HERE",
-    "azure_openai_api_key": "YOUR_AZURE_OPENAI_API_KEY_HERE",
-    "azure_openai_endpoint": "YOUR_AZURE_OPENAI_ENDPOINT_HERE",
-    "azure_openai_deployment": "YOUR_AZURE_OPENAI_DEPLOYMENT_NAME_HERE",
-    "azure_api_version": "2024-05-01-preview"
-  },
   "twitter_automation": {
     "response_interval_seconds": 300,
     "max_tweets_per_keyword_scrape": 15,
@@ -107,5 +99,10 @@
     },
     "proxy_pool_strategy": "hash",
     "proxy_pool_state_file": "data/proxy_pools_state.json"
+  },
+  "llm": {
+    "api_key": "",
+    "base_url": "",
+    "model": "gpt-4o-mini"
   }
 }

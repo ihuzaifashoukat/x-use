@@ -1,54 +1,65 @@
+"""LLMService: facade over the single OpenAI-compatible client.
+
+Interactive MCP use needs no server-side LLM at all — the calling agent
+(Claude, Codex, ...) does the analysis and writing. This service exists for
+the API-backed paths: background automation, "auto" text generation, and
+structured analysis. When no key is configured it returns None rather than
+raising, so heuristic fallbacks (e.g. the analyzer's keyword relevance) keep
+working keyless.
+"""
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from xuse.core.config_loader import ConfigLoader
-from .constants import DEFAULT_SERVICE_ORDER
-from .clients import initialize_clients
+
+from .clients import DEFAULT_MODEL, build_client
 from .prompts import build_structured_json_prompt
 from .parsing import extract_json_from_response_text
-from .generator import TextGenerator
 
 logger = logging.getLogger(__name__)
 
 
 class LLMService:
-    """
-    Facade for LLM operations. Initializes provider clients from config and
-    exposes text generation and structured JSON generation helpers.
-    """
+    """Single-client text generation (free-form and structured JSON)."""
 
     def __init__(self, config_loader: ConfigLoader):
         self.config_loader = config_loader
-        clients, api_keys, llm_settings = initialize_clients(config_loader)
-        self.clients = clients
-        self.api_keys = api_keys
-        self.llm_settings = llm_settings
-        # Ensure service order exists
-        self.llm_settings.setdefault('service_preference_order', DEFAULT_SERVICE_ORDER)
-        self._text_generator = TextGenerator(self.clients, self.llm_settings)
+        self.client, self.resolved = build_client(config_loader)
+        self.default_model = self.resolved.get("model", DEFAULT_MODEL)
 
     async def generate_text(
         self,
         prompt: str,
-        service_preference: Optional[str] = None,
+        service_preference: Optional[str] = None,  # DEPRECATED: ignored — single client
         system_prompt: Optional[str] = None,
         messages: Optional[List[Dict[str, str]]] = None,
         **call_params: Any,
     ) -> Optional[str]:
-        return await self._text_generator.generate_text(
-            prompt,
-            service_preference=service_preference,
-            system_prompt=system_prompt,
-            messages=messages,
-            **call_params,
+        if self.client is None:
+            logger.info("LLM not configured; generate_text returning None.")
+            return None
+        model = (call_params.pop("model_name", None)
+                 or call_params.pop("model", None)
+                 or self.default_model)
+        call_params.setdefault("max_tokens", 250)
+        built_messages = messages if messages is not None else (
+            ([{"role": "system", "content": system_prompt}] if system_prompt else [])
+            + [{"role": "user", "content": prompt}]
         )
+        try:
+            response = await self.client.chat.completions.create(
+                model=model, messages=built_messages, **call_params)
+            return (response.choices[0].message.content or "").strip()
+        except Exception as e:
+            logger.error("LLM generation failed: %s", e, exc_info=True)
+            return None
 
     async def generate_structured(
         self,
         task_instruction: str,
         schema: Dict[str, Any],
         *,
-        service_preference: Optional[str] = None,
+        service_preference: Optional[str] = None,  # DEPRECATED: ignored — single client
         require_markdown_fences: bool = False,
         max_retries: int = 2,
         system_prompt: Optional[str] = None,
@@ -56,10 +67,11 @@ class LLMService:
         hard_character_limit: Optional[int] = None,
         **call_params: Any,
     ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-        """
-        Generate a structured JSON object following the provided schema.
-        Returns (parsed_json_dict, error_message). On success, error_message is None.
-        """
+        """Generate a structured JSON object following the provided schema.
+        Returns (parsed_json_dict, error_message). On success, error_message
+        is None. The first attempt uses the API's JSON mode; later attempts
+        fall back to plain text (some OpenAI-compatible providers reject
+        response_format)."""
         prompt = build_structured_json_prompt(
             task_instruction,
             schema,
@@ -68,18 +80,15 @@ class LLMService:
             hard_character_limit=hard_character_limit,
         )
 
-        use_openai_json_mode = False
-        if service_preference == 'openai' and 'response_format' not in call_params:
-            call_params['response_format'] = {"type": "json_object"}
-            use_openai_json_mode = True
-
         last_err: Optional[str] = None
         for attempt in range(max_retries + 1):
+            params = dict(call_params)
+            if attempt == 0 and "response_format" not in params:
+                params["response_format"] = {"type": "json_object"}
             text = await self.generate_text(
                 prompt=prompt,
-                service_preference=service_preference,
                 system_prompt=system_prompt,
-                **call_params,
+                **params,
             )
             if not text:
                 last_err = "No response from LLM"
@@ -88,10 +97,6 @@ class LLMService:
             data, err = extract_json_from_response_text(text)
             if data is not None:
                 return data, None
-
-            if use_openai_json_mode and attempt == 0:
-                call_params.pop('response_format', None)
             last_err = err or "Unknown parse error"
 
         return None, last_err or "Failed to produce valid JSON after retries"
-
