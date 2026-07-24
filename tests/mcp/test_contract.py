@@ -1,4 +1,4 @@
-"""MCP contract tests: the server exposes exactly the nine documented tools,
+"""MCP contract tests: the server exposes exactly the 24 documented tools,
 their schemas accept the documented parameters, and tool failures return
 structured error envelopes (``{"ok": false, "error": {...}}``) instead of
 raising through the server (NFR-1).
@@ -28,7 +28,7 @@ from helpers import (  # noqa: F401 — imported fixtures register for this modu
     session_pool,
 )
 
-# The nine documented tools and the parameter names each must accept.
+# The 24 documented tools and the parameter names each must accept.
 EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "list_accounts": {"params": set(), "required": set()},
     "get_metrics": {"params": {"account"}, "required": {"account"}},
@@ -54,11 +54,16 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
                                   "action_config"}, "required": {"account"}},
     "set_account_active": {"params": {"account", "active"}, "required": {"account", "active"}},
     "remove_account": {"params": {"account", "confirm"}, "required": {"account"}},
+    "list_drafts": {"params": {"status", "account", "limit"}, "required": set()},
+    "get_draft": {"params": {"draft_id"}, "required": {"draft_id"}},
+    "reject_draft": {"params": {"draft_id"}, "required": {"draft_id"}},
+    "get_run_status": {"params": {"run_id"}, "required": set()},
+    "get_account_health": {"params": {"account"}, "required": {"account"}},
 }
 
 
 @pytest.mark.asyncio
-async def test_server_registers_exactly_the_documented_tools(mcp_server):
+async def test_server_registers_exactly_the_24_documented_tools(mcp_server):
     tools = await mcp_server.list_tools()
     assert {t.name for t in tools} == set(EXPECTED_TOOLS)
 
