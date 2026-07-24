@@ -1,0 +1,8 @@
+{
+  "name": "x-use",
+  "description": "Browser-native X (Twitter) automation via the x-use MCP server — research, reply, post, and review with draft-gated safety. Requires the x-use-mcp package (pip install x-use-mcp).",
+  "version": "2.3.0",
+  "author": {
+    "name": "Huzaifa Shoukat"
+  }
+}

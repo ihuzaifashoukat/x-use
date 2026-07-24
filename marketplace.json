@@ -1,0 +1,13 @@
+{
+  "name": "x-use",
+  "owner": {
+    "name": "Huzaifa Shoukat"
+  },
+  "plugins": [
+    {
+      "name": "x-use",
+      "source": "./plugins/x-use",
+      "description": "Browser-native X (Twitter) automation: research, reply, post, and review skills for the x-use MCP server."
+    }
+  ]
+}
