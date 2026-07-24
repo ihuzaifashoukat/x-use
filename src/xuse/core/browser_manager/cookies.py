@@ -108,8 +108,7 @@ def apply_cookies(driver: WebDriver, cookies: List[Dict[str, Any]], cookie_domai
                     f"Could not add cookie {selenium_cookie.get('name')}: {e}"
                 )
 
-    if cookie_domain_url:
-        try:
-            driver.refresh()
-        except Exception:
-            pass
+    # NB: no driver.refresh() here. add_cookie takes effect immediately, and
+    # the caller (BrowserManager.get_driver) navigates to /home right after —
+    # that load already sends the cookies. The refresh was a redundant full
+    # page load on every cold start (3-4 visible reloads; live finding, v2.3).
