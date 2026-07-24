@@ -64,7 +64,7 @@ class AccountsConfigWriter:
             raise ConfigWriteError("Validation failed: " + "; ".join(errors))
 
     def _backup(self) -> None:
-        if not self.accounts_file.is_file():
+        if not self.accounts_file.is_file() or self.max_backups <= 0:
             return
         self.backups_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")

@@ -69,3 +69,12 @@ def test_load_non_list_raises(tmp_path):
     target.write_text("{}", encoding="utf-8")
     with pytest.raises(ConfigWriteError, match="array"):
         AccountsConfigWriter(target).load()
+
+
+def test_max_backups_zero_creates_no_backups(tmp_path):
+    target = tmp_path / "accounts.json"
+    write_accounts(target, [{"account_id": "acc1"}])
+    writer = AccountsConfigWriter(target, max_backups=0)
+    writer.mutate(lambda accs: accs)
+    backups_dir = tmp_path / "backups"
+    assert not backups_dir.exists() or list(backups_dir.glob("accounts-*.json")) == []
