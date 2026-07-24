@@ -1,4 +1,5 @@
-"""MCP contract tests: the server exposes exactly the 25 documented tools,
+"""MCP contract tests: the server exposes exactly the documented tools — the
+count is pinned by ``EXPECTED_TOOLS`` (currently 25, growing to 32 in v2.3) —
 their schemas accept the documented parameters, and tool failures return
 structured error envelopes (``{"ok": false, "error": {...}}``) instead of
 raising through the server (NFR-1).
@@ -49,10 +50,10 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "process_queue": {"params": {"account", "max_actions"}, "required": set()},
     "get_account": {"params": {"account"}, "required": {"account"}},
     "add_account": {"params": {"account_id", "cookie_file", "proxy", "target_keywords",
-                               "is_active"}, "required": {"account_id"}},
+                               "persona", "is_active"}, "required": {"account_id"}},
     "update_account": {"params": {"account", "is_active", "proxy", "target_keywords",
-                                  "competitor_profiles", "self_handles", "cookie_file",
-                                  "action_config"}, "required": {"account"}},
+                                  "competitor_profiles", "self_handles", "persona",
+                                  "cookie_file", "action_config"}, "required": {"account"}},
     "set_account_active": {"params": {"account", "active"}, "required": {"account", "active"}},
     "remove_account": {"params": {"account", "confirm"}, "required": {"account"}},
     "list_drafts": {"params": {"status", "account", "limit"}, "required": set()},
@@ -64,7 +65,8 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
 
 
 @pytest.mark.asyncio
-async def test_server_registers_exactly_the_25_documented_tools(mcp_server):
+async def test_server_registers_exactly_the_expected_tools(mcp_server):
+    """The tool count is pinned by EXPECTED_TOOLS (25 now, 32 at v2.3's end)."""
     tools = await mcp_server.list_tools()
     assert {t.name for t in tools} == set(EXPECTED_TOOLS)
 

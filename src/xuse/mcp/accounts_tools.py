@@ -98,12 +98,14 @@ def register_account_tools(server, ctx: Ctx) -> None:
     async def add_account(account_id: str, cookie_file: Optional[str] = None,
                           proxy: Optional[str] = None,
                           target_keywords: Optional[List[str]] = None,
+                          persona: Optional[str] = None,
                           is_active: bool = True) -> Dict[str, Any]:
         """Add an account to config/accounts.json (validated, backed up,
         atomic). `cookie_file` is a path ON THIS MACHINE to an exported
         x.com cookies JSON; it is validated and copied to
         config/<account_id>_cookies.json. Cookie values never pass through
-        the tool call."""
+        the tool call. `persona` is freeform markdown describing the
+        account's voice/engagement style (max 4000 chars)."""
         if not _SAFE_ACCOUNT_ID.fullmatch(account_id or ""):
             raise ToolError(
                 f"Invalid account id {account_id!r}: use letters, digits, '_' or '-'.")
@@ -120,6 +122,8 @@ def register_account_tools(server, ctx: Ctx) -> None:
             entry["cookie_file_path"] = cookie_rel
         if proxy:
             entry["proxy"] = proxy
+        if persona:
+            entry["persona"] = persona
         try:
             updated = _writer(ctx).mutate(lambda accounts: [*accounts, entry])
         except ConfigWriteError as e:
@@ -136,10 +140,12 @@ def register_account_tools(server, ctx: Ctx) -> None:
                              target_keywords: Optional[List[str]] = None,
                              competitor_profiles: Optional[List[str]] = None,
                              self_handles: Optional[List[str]] = None,
+                             persona: Optional[str] = None,
                              cookie_file: Optional[str] = None,
                              action_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Partially update an account. Only provided fields change (None =
-        leave unchanged); pass an empty string to clear `proxy`.
+        leave unchanged); pass an empty string to clear `proxy`. `persona`
+        sets the freeform persona text; pass an empty string to clear it.
         `cookie_file` re-imports cookies like add_account. The account's
         warm browser session is closed, so the next action cold-starts on
         the new config."""
@@ -163,6 +169,11 @@ def register_account_tools(server, ctx: Ctx) -> None:
                     raw["competitor_profiles"] = list(competitor_profiles)
                 if self_handles is not None:
                     raw["self_handles"] = list(self_handles)
+                if persona is not None:
+                    if persona == "":
+                        raw.pop("persona", None)
+                    else:
+                        raw["persona"] = persona
                 if action_config is not None:
                     raw["action_config"] = dict(action_config)
                 if cookie_rel:
