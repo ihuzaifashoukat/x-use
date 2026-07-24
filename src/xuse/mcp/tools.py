@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional
 
 from xuse.core.config_loader import PROJECT_ROOT
 from xuse.features.scraper import TweetScraper
+from xuse.mcp.media import (MAX_IMAGES_PER_SEARCH, images_for_tweet,
+                            media_envelope, with_images)
 
 from . import actions, executor as ex
 from .drafts import Draft
@@ -125,16 +127,64 @@ def register_tools(server, ctx: Ctx) -> None:
 
     @server.tool()
     @guard
-    async def search_tweets(keywords: str, limit: int = 10, account: Optional[str] = None) -> Dict[str, Any]:
+    async def search_tweets(keywords: str, limit: int = 10, account: Optional[str] = None,
+                            include_images: bool = False) -> dict[str, Any]:
         """Search recent X posts for a query string. Read-only (draft mode
         does not apply). Reuses the account's warm browser session. `account`
-        defaults to the first active configured account."""
+        defaults to the first active configured account.
+        `include_images=true` additionally attaches the first photo of up to
+        5 tweets as image content (bounded); the per-tweet `media` URLs +
+        alt text are always present."""
         account_id, _, _ = ex.resolve_account(ctx, account)
         limit = max(1, min(int(limit), 50))
         async with ctx.session_pool.session(account_id) as browser_manager:
             scraper = await asyncio.to_thread(TweetScraper, browser_manager, account_id)
             tweets = await asyncio.to_thread(scraper.scrape_tweets_by_keyword, keywords, limit)
-        return ok_(account=account_id, query=keywords, count=len(tweets), tweets=[dump_tweet(t) for t in tweets])
+        envelope = ok_(account=account_id, query=keywords, count=len(tweets),
+                       tweets=[dump_tweet(t) for t in tweets])
+        if not include_images:
+            return envelope
+        images = []
+        for tweet in tweets:
+            if len(images) >= MAX_IMAGES_PER_SEARCH:
+                break
+            photo_items = [m for m in (getattr(tweet, "media", None) or []) if m.type == "image"]
+            if photo_items:
+                fetched = await asyncio.to_thread(images_for_tweet, tweet, 1)
+                images.extend(fetched[: MAX_IMAGES_PER_SEARCH - len(images)])
+        return with_images(envelope, images)
+
+    @server.tool()
+    @guard
+    async def get_tweet(account: str, tweet_url: str, include_images: bool = True) -> dict[str, Any]:
+        """Read-only fetch of one tweet: text, author, public counts, typed
+        media (photos + video posters) and the account's persona. With
+        include_images=true (default) photos also attach as image content so
+        a vision-capable client sees them; the envelope always carries URLs
+        + alt text as the fallback. Nothing is posted; draft mode N/A."""
+        account_id, _, model = ex.resolve_account(ctx, account)
+        tweet_id = ex.tweet_id_from_url(tweet_url)
+        if not tweet_id:
+            raise ToolError(f"Could not parse a tweet id from URL: {tweet_url}")
+        original = await scrape_single_tweet(ctx, account_id, tweet_url, tweet_id)
+        handle = (original.user_handle or "").lstrip("@")
+        envelope = ok_(
+            account=account_id,
+            tweet_id=tweet_id,
+            tweet_url=tweet_url,
+            author=f"@{handle}" if handle else None,
+            text_content=original.text_content or "",
+            like_count=original.like_count or 0,
+            retweet_count=original.retweet_count or 0,
+            reply_count=original.reply_count or 0,
+            view_count=original.view_count or 0,
+            media=media_envelope(original),
+            persona=getattr(model, "persona", None),
+        )
+        if not include_images:
+            return envelope
+        images = await asyncio.to_thread(images_for_tweet, original)
+        return with_images(envelope, images)
 
     @server.tool()
     @guard

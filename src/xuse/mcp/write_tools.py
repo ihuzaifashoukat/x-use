@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from xuse.mcp.media import images_for_tweet, media_envelope, with_images
 from xuse.orchestrator import TwitterOrchestrator
 from xuse.pipelines import PIPELINE_FLAGS as _PIPELINE_FLAGS
 
@@ -116,10 +117,11 @@ def register_write_tools(server, ctx: Ctx) -> None:
 
     @server.tool()
     @guard
-    async def prepare_reply(account: str, tweet_url: str) -> Dict[str, Any]:
-        """Read-only reply context: fetch the tweet's content plus the
-        account's target keywords so YOUR model can write the reply itself —
-        no server-side LLM, nothing posted. Then pass your text to
+    async def prepare_reply(account: str, tweet_url: str, include_images: bool = True) -> dict[str, Any]:
+        """Read-only reply context: the tweet's text AND media (photos attach
+        as image content so your model can see them), plus the account's
+        keywords and persona — YOUR model writes the reply itself, no
+        server-side LLM, nothing posted. Then pass your text to
         reply_to_tweet(text=...) or queue_engagement(action="reply", text=...)."""
         account_id, _, model = ex.resolve_account(ctx, account)
         tweet_id = ex.tweet_id_from_url(tweet_url)
@@ -127,17 +129,23 @@ def register_write_tools(server, ctx: Ctx) -> None:
             raise ToolError(f"Could not parse a tweet id from URL: {tweet_url}")
         original = await scrape_single_tweet(ctx, account_id, tweet_url, tweet_id)
         handle = (original.user_handle or "").lstrip("@")  # scraper handles arrive @-prefixed
-        return ok_(
+        envelope = ok_(
             account=account_id,
             tweet_id=tweet_id,
             tweet_url=tweet_url,
             author=f"@{handle}" if handle else None,
             text_content=original.text_content or "",
+            media=media_envelope(original),
+            persona=getattr(model, "persona", None),
             account_keywords=list(getattr(model, "target_keywords", None) or []),
             max_reply_chars=ex.MAX_REPLY_CHARS,
             message="Write the reply with your own model, then call "
                     "reply_to_tweet or queue_engagement(action='reply') with the text.",
         )
+        if not include_images:
+            return envelope
+        images = await asyncio.to_thread(images_for_tweet, original)
+        return with_images(envelope, images)
 
     @server.tool()
     @guard
