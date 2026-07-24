@@ -17,6 +17,7 @@ import pytest
 from xuse.mcp.drafts import DraftStore
 from xuse.mcp.server import create_server
 from xuse.mcp.sessions import SessionPool
+from xuse.queue import QueueStore
 
 
 class FakeBrowserManager:
@@ -158,5 +159,11 @@ def draft_store(drafts_path) -> DraftStore:
 
 
 @pytest.fixture
-def mcp_server(config_loader, session_pool, draft_store):
-    return create_server(config_loader=config_loader, session_pool=session_pool, draft_store=draft_store)
+def queue_store(tmp_path):
+    return QueueStore(tmp_path / "queue.jsonl")
+
+
+@pytest.fixture
+def mcp_server(config_loader, session_pool, draft_store, queue_store):
+    return create_server(config_loader=config_loader, session_pool=session_pool,
+                         draft_store=draft_store, queue_store=queue_store)

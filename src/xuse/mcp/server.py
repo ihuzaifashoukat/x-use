@@ -1,7 +1,8 @@
 """x-use MCP server — official MCP Python SDK v1.x ``FastMCP`` over stdio.
 
-Exposes the engine as nine tools (see ``tools.py``) with draft mode on by
-default and a lazy, warm per-account browser pool. Run directly::
+Exposes the engine as 24 tools (see ``tools.py``): read-only/status tools,
+draft-gated immediate writes, the scheduled-action queue, and account
+management. Run directly::
 
     python -m xuse.mcp.server
 
@@ -14,6 +15,16 @@ Config (all optional, additive — ``config/settings.json``)::
         "session_idle_timeout_seconds": 600,   // warm-session reap threshold
         "cold_start_timeout_seconds": 180,     // browser start + cookie login
         "drafts_file": "data/drafts.jsonl"     // draft persistence
+    },
+    "queue": {
+        "store_file": "data/engagement_queue.jsonl",
+        "max_actions_per_run": 5,
+        "min_delay_seconds": 90,
+        "max_delay_seconds": 240,
+        "max_attempts": 2,
+        "daily_caps": {"post": 5, "reply": 15, "like": 30, "retweet": 10},
+        "auto_drain": {"enabled": false, "interval_seconds": 900,
+                       "max_actions_per_account": 3}
     }
 
 SDK note: pinned to ``mcp>=1,<2``. The v2 alpha renames FastMCP to
@@ -22,16 +33,18 @@ SDK note: pinned to ``mcp>=1,<2``. The v2 alpha renames FastMCP to
 import asyncio
 import logging
 import sys
-from typing import Optional, Union
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional, Union
 
 from mcp.server.fastmcp import FastMCP
 
 from xuse.core.config_loader import ConfigLoader, PROJECT_ROOT
+from xuse.queue import AutoDrainScheduler, QueueConfig, QueueRunner, QueueStore
 
 from . import tools as _tools
 from .drafts import DraftStore
-from .executor import Ctx
+from .executor import Ctx, is_processed
 from .sessions import SessionPool
 
 logger = logging.getLogger(__name__)
@@ -72,12 +85,36 @@ def _enforce_stdio_stdout_hygiene() -> None:
 
 SERVER_NAME = "x-use"
 SERVER_INSTRUCTIONS = (
-    "Browser-native automation for X (Twitter): post, reply, search, and engage "
-    "across multiple accounts. Write tools run in DRAFT MODE by default — they "
-    "return a reviewable draft and change nothing until you call approve_draft "
-    "with the returned draft_id. Read-only tools (list_accounts, get_metrics) "
-    "never start a browser."
+    "Browser-native automation for X (Twitter): post, reply, search, engage, and "
+    "schedule across multiple accounts. Two safety gates: WRITE tools run in "
+    "draft mode by default (review the draft, then approve_draft), and QUEUE "
+    "tools only store work — queued items execute solely through an explicit "
+    "process_queue call, or the auto_drain worker if the operator enabled it. "
+    "Account tools mutate config/accounts.json (validated, backed up); cookie "
+    "secrets are imported by server-side file path only. Read-only tools "
+    "(list_accounts, get_account, get_metrics, search_tweets, list_queue, "
+    "list_drafts, get_draft, get_run_status, get_account_health) never start "
+    "a browser."
 )
+
+
+def _queue_store_path(queue_cfg: QueueConfig) -> Path:
+    path = Path(queue_cfg.store_file)
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+@asynccontextmanager
+async def _lifespan(server: FastMCP):
+    """FastMCP lifespan: start the opt-in auto-drain worker on boot and stop
+    it before shutdown (which then closes the warm browser sessions)."""
+    scheduler = getattr(server, "xuse_auto_drain", None)
+    if scheduler is not None:
+        await scheduler.start()
+    try:
+        yield {}
+    finally:
+        if scheduler is not None:
+            await scheduler.stop()
 
 
 def create_server(
@@ -86,10 +123,12 @@ def create_server(
     draft_mode: Optional[bool] = None,
     session_pool: Optional[SessionPool] = None,
     draft_store: Optional[DraftStore] = None,
+    queue_store: Optional[QueueStore] = None,
+    queue_runner: Optional[QueueRunner] = None,
 ) -> FastMCP:
     """Build the FastMCP server. All dependencies are injectable so contract
-    tests can supply a custom config, a fake-browser pool, and a tmp draft
-    store without touching real browsers or data files."""
+    tests can supply a custom config, a fake-browser pool, tmp stores, and a
+    fake-sleep queue runner without touching real browsers or data files."""
     config_loader = config_loader or ConfigLoader()
     mcp_cfg = config_loader.get_setting("mcp", {}) or {}
     if not isinstance(mcp_cfg, dict):
@@ -106,19 +145,52 @@ def create_server(
     store = draft_store if draft_store is not None else DraftStore(
         Path(mcp_cfg["drafts_file"]) if mcp_cfg.get("drafts_file") else PROJECT_ROOT / "data" / "drafts.jsonl"
     )
+    queue_cfg = QueueConfig.from_settings(config_loader.get_setting("queue", {}))
+    q_store = queue_store if queue_store is not None else QueueStore(_queue_store_path(queue_cfg))
     ctx = Ctx(
         config_loader=config_loader,
         session_pool=pool,
         draft_store=store,
         draft_mode=draft_mode,
+        queue_store=q_store,
+        queue_config=queue_cfg,
     )
-    server = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
+    if queue_runner is not None:
+        ctx.queue_runner = queue_runner
+    else:
+        # Function-level import: queue_tools pulls in the tool layer, which
+        # pulls in the scraper stack; keeping it here mirrors tools.py's own
+        # deferred imports and avoids import cycles during server bring-up.
+        from .queue_tools import build_executor
+
+        ctx.queue_runner = QueueRunner(
+            q_store,
+            queue_cfg,
+            executor=build_executor(ctx),
+            already_done=lambda key: is_processed(ctx, key),
+        )
+    scheduler = None
+    if queue_cfg.auto_drain.enabled:
+        scheduler = AutoDrainScheduler(
+            ctx.queue_runner,
+            account_ids_fn=lambda: [
+                a["account_id"]
+                for a in config_loader.get_accounts_config()
+                if isinstance(a, dict) and a.get("is_active", True) and a.get("account_id")
+            ],
+            interval_seconds=queue_cfg.auto_drain.interval_seconds,
+            max_actions_per_account=queue_cfg.auto_drain.max_actions_per_account,
+        )
+    server = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS, lifespan=_lifespan)
     _tools.register_tools(server, ctx)
     server.xuse_ctx = ctx  # reachable for shutdown hooks and tests
+    if scheduler is not None:
+        server.xuse_auto_drain = scheduler
     logger.info(
-        "x-use MCP server created (draft_mode=%s, idle_timeout=%ss).",
+        "x-use MCP server created (draft_mode=%s, idle_timeout=%ss, auto_drain=%s).",
         ctx.draft_mode,
         pool.idle_timeout_seconds,
+        queue_cfg.auto_drain.enabled,
     )
     return server
 

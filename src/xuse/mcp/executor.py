@@ -20,6 +20,7 @@ from xuse.utils.file_handler import FileHandler
 from xuse.utils.metrics import MetricsRecorder
 
 from .drafts import DraftStore
+from xuse.queue import QueueConfig, QueueRunner, QueueStore
 from .sessions import SessionPool
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,9 @@ class Ctx:
     metrics_factory: Optional[Callable[[str], Any]] = None
     last_action_at: Dict[str, float] = field(default_factory=dict)
     runs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    queue_store: Optional[QueueStore] = None
+    queue_config: Optional[QueueConfig] = None
+    queue_runner: Optional[QueueRunner] = None
 
 
 # ---------------------------------------------------------------------------

@@ -83,7 +83,7 @@ async def scrape_single_tweet(ctx: Ctx, account_id: str, tweet_url: str, tweet_i
 
 
 def register_tools(server, ctx: Ctx) -> None:
-    """Register all nine x-use tools on the FastMCP server."""
+    """Register all x-use tools on the FastMCP server."""
 
     @server.tool()
     @guard
@@ -157,9 +157,13 @@ def register_tools(server, ctx: Ctx) -> None:
         ctx.draft_store.set_status(draft_id, "executed")
         return ok_(draft_id=draft_id, status="executed", result=result)
 
-    # Write tools: post_tweet, generate_and_post, reply_to_tweet, engage, run_cycle
+    # Write tools: post_tweet, generate_and_post, reply_to_tweet, engage,
+    # run_cycle. Queue tools land in the queue task; account/support tools
+    # register in their own tasks.
     from .engage import register_engage_tool
+    from .queue_tools import register_queue_tools
     from .write_tools import register_write_tools
 
     register_write_tools(server, ctx)
     register_engage_tool(server, ctx)
+    register_queue_tools(server, ctx)

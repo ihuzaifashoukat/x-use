@@ -24,6 +24,7 @@ from helpers import (  # noqa: F401 — imported fixtures register for this modu
     make_account,
     mcp_server,
     mcp_settings,
+    queue_store,
     session_pool,
 )
 
