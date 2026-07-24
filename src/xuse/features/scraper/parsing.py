@@ -29,6 +29,51 @@ from .selectors import (
 
 _COUNT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*([kKmM])?")
 
+_STATUS_ID_RE = re.compile(r"/status/(\d+)")
+
+
+def extract_status_id(href: Optional[str]) -> Optional[str]:
+    """Extract the numeric status id from a tweet URL.
+
+    Stops at the first non-digit so '/status/123' never matches '/status/1234'
+    (prefix collision), while '/status/123/photo/1' and '/status/123?s=20'
+    still resolve to '123'. Returns None when no status id is present.
+    """
+    if not href:
+        return None
+    match = _STATUS_ID_RE.search(href)
+    return match.group(1) if match else None
+
+
+def find_article_with_status_id(context, tweet_id: str):
+    """Return the first <article> containing a status link whose id matches
+    `tweet_id` exactly, or None.
+
+    The id comparison happens in Python on extracted href ids; a DOM-level
+    contains(@href, '/status/<id>') prefix-matches other tweets whose id
+    merely starts with the target id.
+    """
+    target = str(tweet_id)
+    try:
+        articles = context.find_elements(
+            By.XPATH, "//article[.//a[contains(@href, '/status/')]]"
+        )
+    except Exception:
+        return None
+    for article in articles:
+        try:
+            links = article.find_elements(By.XPATH, ".//a[contains(@href, '/status/')]")
+        except Exception:
+            continue
+        for link in links:
+            try:
+                href = link.get_attribute("href")
+            except StaleElementReferenceException:
+                continue
+            if extract_status_id(href) == target:
+                return article
+    return None
+
 
 def _parse_int_from_text(text: str) -> int:
     """Parse an engagement count like '1,234', '1.5K', or '3k' into an int.
@@ -100,9 +145,10 @@ def parse_tweet_card(card_element: WebElement, logger: logging.Logger) -> Option
         try:
             link_element = card_element.find_element(By.XPATH, f".{X_STATUS_LINK_XPATH}")
             href = link_element.get_attribute("href")
-            if href and "/status/" in href:
+            extracted_id = extract_status_id(href)
+            if href and extracted_id:
                 tweet_url = href
-                tweet_id = href.split("/status/")[-1].split("?")[0]
+                tweet_id = extracted_id
         except (NoSuchElementException, StaleElementReferenceException):
             logger.debug("Could not find tweet link/ID element for a card (missing or stale).")
             return None

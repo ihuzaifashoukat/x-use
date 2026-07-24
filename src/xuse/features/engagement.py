@@ -8,7 +8,7 @@ from selenium.webdriver.remote.webelement import WebElement # Import WebElement
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
+from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 
 # Adjust import paths
 try:
@@ -16,12 +16,14 @@ try:
     from ..core.config_loader import ConfigLoader
     from ..utils.logger import setup_logger
     from ..data_models import ScrapedTweet, AccountConfig
+    from .scraper.parsing import find_article_with_status_id
 except ImportError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..')) # Add root src to path
     from xuse.core.browser_manager import BrowserManager
     from xuse.core.config_loader import ConfigLoader
     from xuse.utils.logger import setup_logger
     from xuse.models import ScrapedTweet, AccountConfig
+    from xuse.features.scraper.parsing import find_article_with_status_id
 
 config_loader_instance = ConfigLoader()
 setup_logger(config_loader_instance)
@@ -37,26 +39,27 @@ class TweetEngagement:
     def _find_tweet_on_page(self, tweet_id: str) -> Optional[WebElement]:
         """
         Attempts to find a tweet article element by its ID within its URL.
-        This is a helper and might need to be more robust if tweets are not directly addressable
-        or if the current page doesn't show the tweet directly.
+        The status id is matched exactly (Python-side href extraction) so an
+        id that merely prefixes another tweet's id cannot select the wrong
+        article.
         """
-        try:
-            # Construct an XPath to find an article that contains a link with the tweet ID.
-            # This assumes the tweet is visible on the current page.
-            xpath_selector = f"//article[.//a[contains(@href, '/status/{tweet_id}')]]"
-            tweet_element = self.driver.find_element(By.XPATH, xpath_selector)
+        tweet_element = find_article_with_status_id(self.driver, str(tweet_id))
+        if tweet_element is not None:
             logger.info(f"Found tweet element for ID {tweet_id} on page.")
             return tweet_element
-        except NoSuchElementException:
-            logger.warning(f"Tweet element with ID {tweet_id} not found on the current page.")
-            return None
+        logger.warning(f"Tweet element with ID {tweet_id} not found on the current page.")
+        return None
 
     async def like_tweet(self, tweet_id: str, tweet_url: Optional[str] = None) -> bool:
         """
         Likes a tweet given its ID. Navigates to the tweet URL if provided and necessary.
         """
         logger.info(f"Attempting to like tweet ID: {tweet_id}")
-        
+        if tweet_url is not None:
+            # Callers may pass a pydantic HttpUrl; Selenium must JSON-serialize
+            # the URL into the webdriver command, so coerce to str up front.
+            tweet_url = str(tweet_url)
+
         original_url = None
         tweet_card_element = None
 
@@ -66,7 +69,13 @@ class TweetEngagement:
                 original_url = self.driver.current_url
                 if not tweet_id in original_url: # Only navigate if not already on a page related to the tweet
                     logger.info(f"Navigating to tweet URL: {tweet_url}")
-                    self.browser_manager.navigate_to(tweet_url)
+                    if not self.browser_manager.navigate_to(tweet_url):
+                        # Liking from whatever page happens to be loaded could
+                        # hit the wrong tweet — abort instead.
+                        logger.error(
+                            f"Navigation to {tweet_url} failed; aborting like for tweet {tweet_id}."
+                        )
+                        return False
                     time.sleep(3) # Wait for page to load
             
             # Attempt to find the specific tweet card on the page

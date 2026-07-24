@@ -348,7 +348,7 @@ class TwitterOrchestrator:
                             if action_key in self.processed_action_keys:
                                 continue
                             logger.info(f"[{account.account_id}] Liking community post {ct.tweet_id}")
-                            interaction_success = await engagement.like_tweet(ct.tweet_id, ct.tweet_url)
+                            interaction_success = await engagement.like_tweet(ct.tweet_id, str(ct.tweet_url) if ct.tweet_url else None)
                             metrics.log_event('community_like', 'success' if interaction_success else 'failure', {'tweet_id': ct.tweet_id})
                             if interaction_success:
                                 metrics.increment('likes')

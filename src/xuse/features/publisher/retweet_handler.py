@@ -9,9 +9,25 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 from xuse.core.browser_manager import BrowserManager
+from xuse.features.scraper.parsing import find_article_with_status_id
 from xuse.models import ScrapedTweet
 
+from .reply_handler import REPLY_ANY_TOAST_XPATH, _find_error_toast
+
 logger = logging.getLogger(__name__)
+
+
+def _confirm_quote_submission(driver, quote_text_area, timeout: float = 10.0) -> bool:
+    """Wait for a post-submit confirmation signal for a quote tweet: a toast
+    appears or the quote composer detaches (textarea goes stale)."""
+    conditions = [EC.presence_of_element_located((By.XPATH, REPLY_ANY_TOAST_XPATH))]
+    if quote_text_area is not None:
+        conditions.append(EC.staleness_of(quote_text_area))
+    try:
+        WebDriverWait(driver, timeout).until(EC.any_of(*conditions))
+        return True
+    except Exception:
+        return False
 
 
 def retweet_or_quote(
@@ -34,19 +50,28 @@ def retweet_or_quote(
         browser_manager.navigate_to(str(original_tweet.tweet_url))
         time.sleep(random.uniform(2.0, 3.8))
 
-        main_tweet_article_xpath = (
-            f"//article[.//a[contains(@href, '/status/{original_tweet.tweet_id}')]]"
-        )
+        # Match the article by exact status id: contains(@href, ...) would
+        # prefix-match a different tweet whose id starts with this one.
         main_tweet_element = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.XPATH, main_tweet_article_xpath))
+            lambda d: find_article_with_status_id(d, str(original_tweet.tweet_id))
         )
 
-        # If already reposted, the action button is 'unretweet'. Treat as success.
+        # If already reposted, the action button is 'unretweet'.
         try:
             already_reposted_btn = WebDriverWait(main_tweet_element, 3).until(
                 EC.presence_of_element_located((By.XPATH, ".//button[@data-testid='unretweet']"))
             )
             if already_reposted_btn:
+                if is_quote_tweet:
+                    # A quote was requested but the quote composer is not
+                    # reachable from this state — do NOT claim success and
+                    # silently drop the quote text.
+                    logger.error(
+                        f"Tweet {original_tweet.tweet_id} is already reposted; the requested "
+                        "quote was not posted. Reporting failure instead of a fabricated success."
+                    )
+                    return False
+                # Plain retweet is idempotent: already reposted == desired state.
                 logger.info(f"Tweet {original_tweet.tweet_id} already reposted. Skipping confirm.")
                 return True
         except TimeoutException:
@@ -111,6 +136,20 @@ def retweet_or_quote(
             )
             post_button.click()
             logger.info("Clicked 'Post' for quote tweet.")
+
+            error_toast = _find_error_toast(driver)
+            if error_toast is not None:
+                logger.error(
+                    "Quote tweet failed — platform error or limit detected: %s",
+                    (error_toast.text or "").strip(),
+                )
+                return False
+            if not _confirm_quote_submission(driver, quote_text_area):
+                logger.error(
+                    f"No submission confirmation for quote of tweet {original_tweet.tweet_id}; "
+                    "treating the quote as failed."
+                )
+                return False
         else:
             # Wait for either the confirm button inside Dropdown or the dropdown text fallbacks
             confirm_retweet_button = None
@@ -175,6 +214,20 @@ def retweet_or_quote(
             except Exception:
                 driver.execute_script("arguments[0].click();", confirm_retweet_button)
             logger.info("Clicked 'Repost' (confirm retweet) option.")
+
+            # Confirmation: a successful repost flips the action button to
+            # 'unretweet' (same state-flip idiom as the like flow). Without
+            # the flip there is no evidence the repost happened.
+            try:
+                WebDriverWait(main_tweet_element, 8).until(
+                    EC.presence_of_element_located((By.XPATH, ".//button[@data-testid='unretweet']"))
+                )
+            except TimeoutException:
+                logger.error(
+                    f"Repost of tweet {original_tweet.tweet_id} was not confirmed "
+                    "(button never flipped to 'unretweet')."
+                )
+                return False
 
         # Light backoff after action to avoid rapid-fire sequences
         time.sleep(random.uniform(2.0, 4.5))

@@ -22,7 +22,17 @@ def configure_driver_options(
     for_undetected: bool = False,
 ) -> Union[ChromeOptions, FirefoxOptions]:
     user_agent = get_user_agent(custom_user_agent)
-    options.add_argument(f"user-agent={user_agent}")
+    if browser_type == 'chrome':
+        # Chromium only treats '--'-prefixed tokens as switches; a bare
+        # 'user-agent=...' token is parsed as a positional URL argument.
+        # undetected-chromedriver manages its own User-Agent — passing one
+        # through its capability flow can conflict, so leave UC alone.
+        if not for_undetected:
+            options.add_argument(f"--user-agent={user_agent}")
+    elif browser_type == 'firefox':
+        # Firefox has no user-agent CLI switch; the override preference is
+        # the only mechanism.
+        options.set_preference("general.useragent.override", user_agent)
 
     if headless:
         if browser_type == 'chrome':

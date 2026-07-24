@@ -131,6 +131,11 @@ def _should_retry(status_code: int) -> bool:
     return status_code in RETRYABLE_STATUS
 
 
+class _DisallowedContentType(Exception):
+    """The server answered 200 with a non-media body (e.g. a text/html error
+    page). Saving it would attach an HTML document to a tweet as an image."""
+
+
 def download_with_retries(
     url: str,
     out_dir: str,
@@ -159,13 +164,14 @@ def download_with_retries(
 
             with requests.get(url, stream=True, timeout=timeout, allow_redirects=True, **req_ctx) as resp:
                 if not resp.ok:
-                    # Retry on retryable status codes
-                    if _should_retry(resp.status_code):
-                        raise requests.HTTPError(f"HTTP {resp.status_code} for {url}")
-                    resp.raise_for_status()
+                    # Carry the response so the retry policy below can tell
+                    # retryable statuses (429/5xx) from hard failures (404…).
+                    raise requests.HTTPError(f"HTTP {resp.status_code} for {url}", response=resp)
                 ok, bad_type = _validate_content_type(resp)
                 if not ok:
-                    logger.warning("Unexpected content-type '%s' for %s", bad_type, url)
+                    raise _DisallowedContentType(
+                        f"Refusing to save disallowed content-type '{bad_type}' for {url}"
+                    )
                 filename = _derive_filename(url, resp)
                 file_path = _ensure_unique_path(out_dir, filename)
 
@@ -188,6 +194,24 @@ def download_with_retries(
                 os.replace(tmp_path, file_path)
                 logger.info("Media downloaded successfully to: %s", file_path)
                 return file_path
+        except _DisallowedContentType as e:
+            last_error = e
+            logger.error("%s", e)
+            break
+        except requests.HTTPError as e:
+            last_error = e
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status is not None and not _should_retry(status):
+                # 404/403/etc. will not heal with backoff — fail fast.
+                logger.error("Non-retryable HTTP %s for %s; not retrying.", status, url)
+                break
+            logger.warning("Download error for %s: %s", url, e)
+            if attempt < max_retries:
+                # jittered exponential backoff
+                sleep_for = backoff + random.uniform(0, 0.5)
+                time.sleep(sleep_for)
+                backoff = min(backoff * 2, 8.0)
+                continue
         except requests.exceptions.RequestException as e:
             last_error = e
             logger.warning("Download error for %s: %s", url, e)

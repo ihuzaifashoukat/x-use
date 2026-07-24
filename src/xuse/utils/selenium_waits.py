@@ -1,3 +1,4 @@
+import time
 import typing
 from typing import Iterable, Tuple, Optional
 
@@ -18,15 +19,20 @@ def wait_for_any_present(context: typing.Union[WebDriver, WebElement],
     """
     Waits for the first present element among the provided locators within the given context.
     Returns the found WebElement or None if none are found within timeout.
+
+    The timeout bounds the TOTAL wait across all locators (shared deadline),
+    not each locator individually.
     """
-    last_exc: Optional[Exception] = None
+    deadline = time.monotonic() + timeout
     for by, value in locators:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            return WebDriverWait(context, timeout).until(
+            return WebDriverWait(context, remaining).until(
                 EC.presence_of_element_located((by, value))
             )
-        except TimeoutException as e:
-            last_exc = e
+        except TimeoutException:
             continue
     return None
 
@@ -37,15 +43,19 @@ def wait_for_any_clickable(context: typing.Union[WebDriver, WebElement],
     """
     Waits for the first clickable element among the provided locators within the given context.
     Returns the found WebElement or None if none are found within timeout.
+
+    The timeout bounds the TOTAL wait across all locators (shared deadline),
+    not each locator individually.
     """
-    last_exc: Optional[Exception] = None
+    deadline = time.monotonic() + timeout
     for by, value in locators:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            return WebDriverWait(context, timeout).until(
+            return WebDriverWait(context, remaining).until(
                 EC.element_to_be_clickable((by, value))
             )
-        except TimeoutException as e:
-            last_exc = e
+        except TimeoutException:
             continue
     return None
-

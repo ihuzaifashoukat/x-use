@@ -4,6 +4,7 @@ import sys
 import time
 import random
 from typing import List, Optional
+from urllib.parse import quote, quote_plus
 
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
@@ -80,7 +81,14 @@ class TweetScraper:
             search_type,
             max_tweets,
         )
-        self.browser_manager.navigate_to(url)
+        if not self.browser_manager.navigate_to(url):
+            # Never scrape whatever page the driver happens to be on: those
+            # tweets would be attributed to a URL they did not come from.
+            logger.error(
+                "Navigation to %s failed; aborting scrape to avoid returning stale-page tweets.",
+                url,
+            )
+            return []
         time.sleep(5)
 
         scraped_tweets: List[ScrapedTweet] = []
@@ -176,7 +184,9 @@ class TweetScraper:
         return scraped_tweets
 
     def scrape_tweets_by_keyword(self, keyword: str, max_tweets: Optional[int] = None) -> List[ScrapedTweet]:
-        search_url = f"https://x.com/search?q={keyword.replace(' ', '%20')}&f=live"
+        # Fully encode the keyword: '&', '#', '+', quotes etc. would otherwise
+        # corrupt the query string.
+        search_url = f"https://x.com/search?q={quote_plus(keyword)}&f=live"
         return self.scrape_tweets_from_url(search_url, "keyword", max_tweets)
 
     def scrape_tweets_from_profile(self, profile_url: str, max_tweets: Optional[int] = None) -> List[ScrapedTweet]:
@@ -184,7 +194,7 @@ class TweetScraper:
 
     def scrape_tweets_by_hashtag(self, hashtag: str, max_tweets: Optional[int] = None) -> List[ScrapedTweet]:
         clean_hashtag = hashtag.lstrip('#')
-        hashtag_url = f"https://x.com/hashtag/{clean_hashtag}?f=live"
+        hashtag_url = f"https://x.com/hashtag/{quote(clean_hashtag, safe='')}?f=live"
         return self.scrape_tweets_from_url(hashtag_url, "hashtag", max_tweets)
 
 

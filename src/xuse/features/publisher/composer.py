@@ -13,8 +13,17 @@ from xuse.core.browser_manager import BrowserManager
 from xuse.models import AccountConfig
 from xuse.utils.selenium_waits import wait_for_any_present
 from .audience_selector import select_community_if_configured
+from .reply_handler import REPLY_ANY_TOAST_XPATH
 
 logger = logging.getLogger(__name__)
+
+# Platform rejections surface as toast messages; scoped to toast elements so
+# unrelated page text cannot produce false positives.
+COMPOSER_ERROR_TOAST_XPATH = (
+    "//div[@data-testid='toast'][contains(., 'Try again') or contains(., 'rate limit') "
+    "or contains(., 'over the limit') or contains(., 'went wrong') "
+    "or contains(., 'already said that')]"
+)
 
 
 def post_new_tweet(
@@ -217,7 +226,41 @@ def post_new_tweet(
                     return False
         logger.info("Clicked 'Post' button in composer.")
 
-        time.sleep(random.uniform(3.0, 5.0))
+        # Confirmation phase: a clicked Post button is not proof of a posted
+        # tweet — duplicate text, rate limits and spam interstitials reject
+        # silently at the UI level. Fail loudly on a platform error toast...
+        error_toast = None
+        try:
+            error_toast = WebDriverWait(driver, 3).until(
+                EC.presence_of_element_located((By.XPATH, COMPOSER_ERROR_TOAST_XPATH))
+            )
+        except Exception:
+            error_toast = None
+        if error_toast is not None:
+            logger.error(
+                "Post failed — platform error or limit detected: %s",
+                (error_toast.text or "").strip(),
+            )
+            return False
+
+        # ...otherwise watch for a state flip (same idiom as the like flow):
+        # a toast appears or the composer textarea detaches as the composer
+        # closes. No signal means no evidence the tweet was posted.
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.XPATH, REPLY_ANY_TOAST_XPATH)),
+                    EC.staleness_of(text_area),
+                )
+            )
+        except Exception:
+            logger.error(
+                "No post confirmation observed (no toast and the composer stayed open); "
+                "treating the post as failed."
+            )
+            return False
+
+        time.sleep(random.uniform(1.0, 2.0))
         return True
     except TimeoutException as e:
         logger.error(f"Timeout while trying to post tweet: {e}")

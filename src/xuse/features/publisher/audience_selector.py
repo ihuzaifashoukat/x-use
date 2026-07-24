@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from typing import Optional
 
@@ -12,6 +13,42 @@ from xuse.models import AccountConfig
 from xuse.utils.selenium_waits import wait_for_any_clickable
 
 logger = logging.getLogger(__name__)
+
+_COMMUNITY_ID_RE = re.compile(r"/i/communities/(\d+)")
+
+
+def _community_id_from_href(href: Optional[str]) -> Optional[str]:
+    """Extract the numeric community id from a /i/communities/<id> link."""
+    if not href:
+        return None
+    match = _COMMUNITY_ID_RE.search(href)
+    return match.group(1) if match else None
+
+
+def _find_community_by_id(container, community_id) -> Optional[object]:
+    """Find a community menu item by its /i/communities/<id> link.
+
+    The id comparison happens in Python on extracted href ids, so id '123'
+    can never match community '1234' (prefix collision).
+    """
+    target = str(community_id).strip()
+    if not target:
+        return None
+    try:
+        items = container.find_elements(By.XPATH, ".//div[@role='menuitem']")
+    except Exception as e:
+        logger.error(f"Error finding community items: {e}")
+        return None
+    for item in items:
+        try:
+            for link in item.find_elements(By.XPATH, ".//a[@href]"):
+                if _community_id_from_href(link.get_attribute("href")) == target:
+                    logger.info(f"Matched community by id: {target}")
+                    return item
+        except Exception as e:
+            logger.debug(f"Error checking item for community id: {e}")
+            continue
+    return None
 
 
 def _find_audience_container(driver):
@@ -87,7 +124,13 @@ def _click_element_safely(driver, element) -> bool:
 
 
 def _find_community_by_name(container, name: str):
-    """Find community by name inside audience container."""
+    """Find community by name inside the audience container.
+
+    Two-pass semantics in a single sweep: an exact (normalized) match anywhere
+    in the list always wins; substring matches are only a fallback and the
+    shortest candidate text takes precedence (so 'Crypto' selects 'Crypto',
+    never an earlier-listed 'Crypto News').
+    """
     if not name or not name.strip():
         return None
 
@@ -95,44 +138,64 @@ def _find_community_by_name(container, name: str):
     logger.debug(f"Searching for community: {name_lower}")
 
     try:
-        # Select all virtualized community items
         items = container.find_elements(By.XPATH, ".//div[@role='menuitem']")
         logger.debug(f"Found {len(items)} candidate menu items")
-
-        for item in items:
-            try:
-                # Look inside for visible text spans
-                text_spans = item.find_elements(By.XPATH, ".//span[normalize-space(text())]")
-                for span in text_spans:
-                    span_text = span.text.strip().lower()
-                    if span_text and span_text not in ["members", "everyone", "my communities"]:
-                        logger.debug(f"Checking: {span_text}")
-                        if name_lower == span_text or name_lower in span_text:
-                            logger.info(f"Matched community: {span_text}")
-                            return item  # return whole menuitem, not span
-            except Exception as e:
-                logger.debug(f"Error checking item: {e}")
-                continue
     except Exception as e:
         logger.error(f"Error finding community items: {e}")
+        return None
 
-    return None
+    best_partial = None
+    best_partial_len = None
+    for item in items:
+        try:
+            # Look inside for visible text spans
+            text_spans = item.find_elements(By.XPATH, ".//span[normalize-space(text())]")
+            for span in text_spans:
+                span_text = span.text.strip().lower()
+                if not span_text or span_text in ["members", "everyone", "my communities"]:
+                    continue
+                logger.debug(f"Checking: {span_text}")
+                if name_lower == span_text:
+                    logger.info(f"Matched community (exact): {span_text}")
+                    return item  # return whole menuitem, not span
+                if name_lower in span_text:
+                    if best_partial is None or len(span_text) < best_partial_len:
+                        best_partial = item
+                        best_partial_len = len(span_text)
+        except Exception as e:
+            logger.debug(f"Error checking item: {e}")
+            continue
+
+    if best_partial is not None:
+        logger.info("Matched community (substring fallback).")
+    return best_partial
 
 
 
 def select_community_if_configured(driver, account_config: AccountConfig) -> bool:
-    """Enhanced community selection focusing on name-based matching."""
+    """Select the configured community audience.
+
+    ID-based selection (community_id, matching /i/communities/<id> links) is
+    used when present — the post_tweet tool sets exactly this field — with
+    community_name matching as the fallback. A configured-but-unresolvable
+    community aborts the post (False) rather than posting publicly.
+    """
     if not getattr(account_config, "post_to_community", False):
         logger.debug("Community posting not configured.")
         return True
-    
-    community_name = getattr(account_config, "community_name", None)
-    
-    if not community_name:
-        logger.warning("Community posting enabled but no community name provided.")
-        return True
 
-    logger.info(f"Attempting to switch audience to community: '{community_name}'")
+    community_id = getattr(account_config, "community_id", None)
+    community_name = getattr(account_config, "community_name", None)
+
+    if not community_id and not community_name:
+        logger.error(
+            "Community posting enabled but neither community_id nor community_name is set; "
+            "aborting the post instead of publishing to the default public audience."
+        )
+        return False
+
+    target_desc = f"id '{community_id}'" if community_id else f"name '{community_name}'"
+    logger.info(f"Attempting to switch audience to community: {target_desc}")
     
     # Wait for any overlays to disappear
     try:
@@ -194,19 +257,24 @@ def select_community_if_configured(driver, account_config: AccountConfig) -> boo
     
     for attempt in range(max_attempts):
         logger.debug(f"Search attempt {attempt + 1}/{max_attempts}")
-        
-        # Look for the community in currently visible items
-        community_element = _find_community_by_name(audience_container, community_name)
-        
+
+        # Look for the community in currently visible items: id first (it is
+        # unambiguous), then fall back to name matching.
+        community_element = None
+        if community_id:
+            community_element = _find_community_by_id(audience_container, community_id)
+        if community_element is None and community_name:
+            community_element = _find_community_by_name(audience_container, community_name)
+
         if community_element:
-            logger.info(f"Found community '{community_name}' on attempt {attempt + 1}")
-            
+            logger.info(f"Found community ({target_desc}) on attempt {attempt + 1}")
+
             if _click_element_safely(driver, community_element):
                 selected = True
-                logger.info(f"Successfully selected community: '{community_name}'")
+                logger.info(f"Successfully selected community: {target_desc}")
                 break
             else:
-                logger.warning(f"Found community '{community_name}' but failed to click")
+                logger.warning(f"Found community ({target_desc}) but failed to click")
         
         # Count current items to detect if scrolling is working
         try:
@@ -233,7 +301,7 @@ def select_community_if_configured(driver, account_config: AccountConfig) -> boo
                 logger.warning("Scrolling failed, trying a few more attempts without scroll")
 
     if not selected:
-        logger.error(f"Failed to find and select community: '{community_name}'")
+        logger.error(f"Failed to find and select community: {target_desc}")
         
         # Log all visible communities for debugging
         try:
@@ -275,14 +343,14 @@ def select_community_if_configured(driver, account_config: AccountConfig) -> boo
         time.sleep(1)  # Allow UI to update
         updated_button = driver.find_element(By.XPATH, "//button[contains(@aria-label, 'audience')]")
         button_text = updated_button.text or ""
-        
-        if community_name.lower() in button_text.lower():
+
+        if community_name and community_name.lower() in button_text.lower():
             logger.info("Verified: audience button shows selected community")
         else:
             logger.debug(f"Button text after selection: '{button_text}'")
-            
+
     except Exception:
         logger.debug("Could not verify button text update")
 
-    logger.info(f"Community selection completed successfully: '{community_name}'")
+    logger.info(f"Community selection completed successfully: {target_desc}")
     return selected

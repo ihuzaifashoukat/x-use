@@ -8,9 +8,52 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 
 from xuse.core.browser_manager import BrowserManager
+from xuse.features.scraper.parsing import find_article_with_status_id
 from xuse.models import ScrapedTweet
 
 logger = logging.getLogger(__name__)
+
+# Error detection is scoped to toast elements: an unscoped
+# //*[contains(., 'went wrong')] matches the page root whenever the text
+# appears anywhere, and a page-level substring is not a reply failure.
+REPLY_ERROR_TOAST_XPATH = (
+    "//div[@data-testid='toast'][contains(., 'Try again') or contains(., 'rate limit') "
+    "or contains(., 'over the limit') or contains(., 'went wrong')]"
+)
+REPLY_ANY_TOAST_XPATH = "//div[@data-testid='toast']"
+
+
+def _find_error_toast(driver, timeout: float = 3.0):
+    """Return the platform error toast element if one appears, else None."""
+    try:
+        return WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((By.XPATH, REPLY_ERROR_TOAST_XPATH))
+        )
+    except Exception:
+        return None
+
+
+def _confirm_reply_submission(driver, dialog, textarea, timeout: float = 10.0) -> bool:
+    """Wait for a post-submit confirmation signal.
+
+    Modal path: the dialog detaches. Inline path (no dialog): a toast appears
+    or the composer textarea detaches (re-render after a successful post).
+    A reply that produced no signal is treated as not submitted.
+    """
+    if dialog is not None:
+        try:
+            WebDriverWait(driver, timeout).until(EC.staleness_of(dialog))
+            return True
+        except Exception:
+            return False
+    conditions = [EC.presence_of_element_located((By.XPATH, REPLY_ANY_TOAST_XPATH))]
+    if textarea is not None:
+        conditions.append(EC.staleness_of(textarea))
+    try:
+        WebDriverWait(driver, timeout).until(EC.any_of(*conditions))
+        return True
+    except Exception:
+        return False
 
 
 def reply_to_tweet(browser_manager: BrowserManager, original_tweet: ScrapedTweet, reply_text: str) -> bool:
@@ -32,11 +75,10 @@ def reply_to_tweet(browser_manager: BrowserManager, original_tweet: ScrapedTweet
         browser_manager.navigate_to(str(original_tweet.tweet_url))
         time.sleep(3)
 
-        main_tweet_article_xpath = (
-            f"//article[.//a[contains(@href, '/status/{original_tweet.tweet_id}')]]"
-        )
+        # Match the article by exact status id: contains(@href, ...) would
+        # prefix-match a different tweet whose id starts with this one.
         main_tweet_element = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.XPATH, main_tweet_article_xpath))
+            lambda d: find_article_with_status_id(d, str(original_tweet.tweet_id))
         )
 
         reply_icon_button = WebDriverWait(main_tweet_element, 10).until(
@@ -126,36 +168,27 @@ def reply_to_tweet(browser_manager: BrowserManager, original_tweet: ScrapedTweet
             logger.warning("Reply button still disabled; attempting Ctrl+Enter fallback.")
             try:
                 reply_text_area.send_keys(Keys.CONTROL, Keys.ENTER)
-                # Confirm by waiting for dialog to close
-                if dialog is not None:
-                    WebDriverWait(driver, 10).until(EC.staleness_of(dialog))
-                time.sleep(1)
-                return True
             except Exception as e:
-                logger.warning(f"Failed Ctrl+Enter submit attempt: {e}")
-                # Retry once: re-find dialog + textarea and try Enter
-                try:
-                    # Re-resolve dialog
-                    new_dialog = None
-                    try:
-                        new_dialog = WebDriverWait(driver, 6).until(
-                            EC.presence_of_element_located((By.XPATH, "//div[@role='dialog' and @aria-modal='true']"))
-                        )
-                    except Exception:
-                        new_dialog = None
-                    # Re-find textarea
-                    new_scope = new_dialog if new_dialog is not None else driver
-                    new_textarea = WebDriverWait(new_scope, 6).until(
-                        EC.presence_of_element_located((By.XPATH, "//div[@data-testid='tweetTextarea_0']"))
-                    )
-                    new_textarea.send_keys(Keys.ENTER)
-                    if new_dialog is not None:
-                        WebDriverWait(driver, 8).until(EC.staleness_of(new_dialog))
-                    time.sleep(0.8)
-                    return True
-                except Exception as e2:
-                    logger.error(f"Failed to submit reply via keyboard fallback: {e2}")
-                    return False
+                logger.error(f"Failed to submit reply via Ctrl+Enter fallback: {e}")
+                return False
+
+            error_toast = _find_error_toast(driver)
+            if error_toast is not None:
+                logger.error(
+                    "Reply failed — platform error or limit detected after keyboard fallback: %s",
+                    (error_toast.text or "").strip(),
+                )
+                return False
+
+            # Never claim success without a confirmation signal, whether or
+            # not a modal dialog was detected (inline composer path).
+            if not _confirm_reply_submission(driver, dialog, reply_text_area):
+                logger.error(
+                    f"Ctrl+Enter fallback produced no submission confirmation for tweet "
+                    f"{original_tweet.tweet_id}; treating the reply as failed."
+                )
+                return False
+            return True
 
         # Click the enabled Reply button with fallbacks
         try:
@@ -178,22 +211,24 @@ def reply_to_tweet(browser_manager: BrowserManager, original_tweet: ScrapedTweet
 
         logger.info("Clicked 'Reply' button in composer.")
 
-        # Basic error/toast detection for rate limits or failures
-        try:
-            error_candidate = WebDriverWait(driver, 3).until(
-                EC.presence_of_element_located((By.XPATH, "//*[contains(., 'Try again') or contains(., 'rate limit') or contains(., 'over the limit') or contains(., 'went wrong')]"))
+        # A platform error toast (rate limit, spam filter, generic failure)
+        # means the reply was rejected — report failure, never success.
+        error_toast = _find_error_toast(driver)
+        if error_toast is not None:
+            logger.error(
+                "Reply failed — platform error or limit detected: %s",
+                (error_toast.text or "").strip(),
             )
-            logger.warning(f"Reply may have failed due to platform limits or errors: {(error_candidate.text or '').strip()}")
-        except Exception:
-            pass
+            return False
 
-        # Wait for dialog to close as a confirmation
-        try:
-            if dialog is not None:
-                WebDriverWait(driver, 10).until(EC.staleness_of(dialog))
-        except Exception:
-            # Fallback tiny delay if staleness check is inconclusive
-            time.sleep(2)
+        # Require a confirmation signal: dialog detach, toast, or composer
+        # re-render. No signal means we cannot claim the reply was posted.
+        if not _confirm_reply_submission(driver, dialog, reply_text_area):
+            logger.error(
+                f"No submission confirmation for reply to tweet {original_tweet.tweet_id}; "
+                "treating the reply as failed."
+            )
+            return False
 
         time.sleep(random.uniform(1.2, 2.6))
         return True

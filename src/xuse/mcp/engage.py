@@ -151,5 +151,15 @@ def register_engage_tool(server, ctx: Ctx) -> None:
             except (ToolError, SessionError) as e:
                 results.append({"account": account_id, "action": item["action"],
                                 "tweet_id": tweet.tweet_id, "success": False, "error": ex.sanitize_text(e)})
+            except Exception as e:
+                # An unexpected executor failure must not hide the actions
+                # that already executed — record it per action and continue.
+                logger.error(
+                    "Unexpected error executing %s on tweet %s: %s",
+                    item["action"], tweet.tweet_id, e, exc_info=True,
+                )
+                results.append({"account": account_id, "action": item["action"],
+                                "tweet_id": tweet.tweet_id, "success": False,
+                                "error": f"unexpected: {ex.sanitize_text(e)}"})
         succeeded = sum(1 for r in results if r.get("success"))
         return ok_(account=account_id, draft_mode=False, executed=results, succeeded=succeeded, attempted=len(results))
