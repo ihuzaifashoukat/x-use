@@ -100,7 +100,7 @@ Turn x-use from a tool into a platform you can extend without forking.
 
 The fastest way to help right now:
 
-- **Selector fixes.** X changes its DOM regularly. PRs that update or harden selectors in `src/features/scraper/` and `src/features/publisher/` are the most valuable contributions this project gets — especially with a DOM snippet in the PR description showing what changed.
+- **Selector fixes.** X changes its DOM regularly. PRs that update or harden selectors in `src/xuse/features/scraper/` and `src/xuse/features/publisher/` are the most valuable contributions this project gets — especially with a DOM snippet in the PR description showing what changed.
 - **Presets.** New account presets (`presets/accounts/`) and settings presets (`presets/settings/`) for real-world use cases — a good preset saves every new user an hour of configuration.
 - **Docs.** Clarify setup steps, add troubleshooting entries, improve `docs/CONFIG_REFERENCE.md`. If something confused you during setup, it confuses others too.
 - **MCP tool ideas.** Open an issue describing the tool call you wish existed (name, inputs, expected behavior). The Phase 1 tool list above is a starting set, not a ceiling.

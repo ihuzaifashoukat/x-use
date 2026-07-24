@@ -163,7 +163,7 @@ pip install -e '.[dev]'
 pytest
 ```
 
-252 tests cover config loading and merging, dedup keys, LLM JSON extraction and the single-client service, tweet parsing, proxy pool selection, the MCP tool contract, drafts, sessions, the action queue, account writes, and the CLI; none of them needs a network or a browser. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the suite plus an import smoke check on Python 3.10/3.11/3.12.
+304 tests cover config loading and merging, dedup keys, LLM JSON extraction and the single-client service, tweet parsing, proxy pool selection, the MCP tool contract, drafts, sessions, the action queue, account writes, and the CLI; none of them needs a network or a browser. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the suite plus an import smoke check on Python 3.10/3.11/3.12.
 
 The v2.0 relaunch is merged; PyPI publishing and MCP directory submissions are the remaining Phase 1 items. Dashboard and Docker are Phase 2; personas, plugins, and selector self-healing are Phase 3. See [ROADMAP.md](ROADMAP.md).
 

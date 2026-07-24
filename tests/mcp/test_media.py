@@ -3,8 +3,6 @@ import base64
 import io
 import json
 
-import pytest
-
 from xuse.mcp import media as m
 
 
@@ -49,6 +47,19 @@ def test_fetch_image_failure_returns_none(monkeypatch):
     monkeypatch.setattr(m.requests, "get",
                         lambda url, timeout: FakeResponse(b"nope", status=404))
     assert m.fetch_image("https://pbs.twimg.com/media/gone.jpg") is None
+
+
+def test_fetch_image_rejects_non_twimg_url_without_fetching(monkeypatch):
+    def _boom(url, timeout):
+        raise AssertionError("requests.get must not be called for non-twimg URLs")
+    monkeypatch.setattr(m.requests, "get", _boom)
+    assert m.fetch_image("https://evil.example.com/media/a.jpg") is None
+
+
+def test_fetch_image_rejects_oversized_body(monkeypatch):
+    monkeypatch.setattr(m.requests, "get",
+                        lambda url, timeout: FakeResponse(b"x" * 8_000_001))
+    assert m.fetch_image("https://pbs.twimg.com/media/huge.jpg") is None
 
 
 def test_images_for_tweet_skips_video_and_failed_fetches(monkeypatch):

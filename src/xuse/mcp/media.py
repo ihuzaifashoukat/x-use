@@ -12,6 +12,7 @@ import io
 import json
 import logging
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import requests
 from mcp.types import CallToolResult, ImageContent, TextContent
@@ -23,13 +24,30 @@ MAX_IMAGES_PER_SEARCH = 5
 FETCH_TIMEOUT_SECONDS = 5
 MAX_DIMENSION = 1024
 MAX_BYTES = 200_000
+MAX_DOWNLOAD_BYTES = 8_000_000
+
+
+def _is_allowed_image_url(url: str) -> bool:
+    """Only http(s) URLs on twimg.com or a subdomain of it may be fetched."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("http", "https"):
+        return False
+    return host == "twimg.com" or host.endswith(".twimg.com")
 
 
 def fetch_image(url: str) -> Optional[ImageContent]:
     """Download one image and return a bounded JPEG ImageContent, or None."""
+    if not _is_allowed_image_url(url):
+        return None
     try:
         resp = requests.get(url, timeout=FETCH_TIMEOUT_SECONDS)
         resp.raise_for_status()
+        if len(resp.content) > MAX_DOWNLOAD_BYTES:
+            return None
         raw = resp.content
     except Exception:
         logger.info("Image fetch failed: %s", url, exc_info=True)

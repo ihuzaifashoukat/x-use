@@ -16,6 +16,8 @@ writer; the server drives the browser.
    `generate_and_post`, `engage`) return a *draft* by default and change
    nothing on X. Present the draft to the user; only `approve_draft(draft_id)`
    executes it — and only when the user explicitly says to approve.
+   `run_cycle` is the legacy batch path — it executes immediately and is not
+   draft-gated.
 2. **Queue gate.** `queue_post` / `queue_engagement` only store work. Nothing
    runs until an explicit `process_queue` call (daily caps apply).
 

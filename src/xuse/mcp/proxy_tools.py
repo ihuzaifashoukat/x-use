@@ -5,8 +5,10 @@ Pools live in settings.json (browser_settings.proxy_pools); accounts point at
 a direct URL or "pool:<name>". Mutations go through SettingsConfigWriter
 (backup + atomic replace) and refresh the in-memory ConfigLoader. Every URL
 in every response is fully userinfo-masked (scheme://***@host:port).
-test_proxy drives a THROWAWAY browser (no account cookies, never the warm
-session pool, never x.com) to an IP-echo endpoint.
+test_proxy drives a THROWAWAY, cookieless browser (no account cookies, never
+the warm session pool): startup performs an anonymous x.com/home load, then
+it fetches an IP-echo endpoint — so the reported latency includes browser
+boot.
 """
 import asyncio
 import json
@@ -48,9 +50,9 @@ def validate_proxy_url(url: str) -> str:
     scheme = u.split("://", 1)[0] if "://" in u else ""
     if scheme not in _VALID_SCHEMES:
         raise ToolError(
-            f"Unsupported proxy scheme in {url!r}: use {', '.join(_VALID_SCHEMES)}.")
+            f"Unsupported proxy scheme in {mask_proxy(u)!r}: use {', '.join(_VALID_SCHEMES)}.")
     if "${" not in u and not urlparse(u).hostname:
-        raise ToolError(f"Proxy URL has no host: {url!r}")
+        raise ToolError(f"Proxy URL has no host: {mask_proxy(u)!r}")
     return u
 
 
@@ -170,8 +172,12 @@ def register_proxy_tools(server, ctx: Ctx) -> None:
         """Probe a proxy with a throwaway browser: resolves the effective proxy
         (explicit proxy_url wins; otherwise the account's direct URL or
         pool:<name> assignment), opens an IP-echo page, and reports the egress
-        IP + latency. Never touches account cookies, the warm session pool, or
-        x.com. Credentials masked in the response."""
+        IP + latency. The probe browser is throwaway and cookieless — never
+        account cookies or the warm session pool — but startup performs an
+        anonymous x.com/home load before the IP-echo fetch, so latency_ms
+        includes browser boot. With a round_robin pool, probing via `account`
+        advances the pool's rotation cursor. Credentials masked in the
+        response."""
         if proxy_url and proxy_url.strip():
             resolved = validate_proxy_url(proxy_url)
         elif account:

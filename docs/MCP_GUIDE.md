@@ -8,10 +8,11 @@ signatures, behavior, and gotchas.
 ## The two safety gates
 
 1. **Draft gate (on by default).** Write tools (`post_tweet`,
-   `generate_and_post`, `reply_to_tweet`, `engage`) build the full payload,
-   store a draft, and change nothing on X. Only `approve_draft(draft_id)`
-   executes a draft. Opt out with `"mcp": { "draft_mode": false }` in
-   `config/settings.json`.
+   `generate_and_post`, `reply_to_tweet`, `engage`, `run_cycle`,
+   `approve_draft`) build the full payload, store a draft, and change nothing
+   on X. Only `approve_draft(draft_id)` executes a draft. `run_cycle` is the
+   legacy batch path — it executes immediately and is not draft-gated. Opt out
+   with `"mcp": { "draft_mode": false }` in `config/settings.json`.
 2. **Queue gate.** `queue_post` / `queue_engagement` only store work. Nothing
    runs until an explicit `process_queue` call (or the opt-in `auto_drain`
    worker), which applies jittered pacing and daily caps.
@@ -270,9 +271,12 @@ referenced pool is allowed but reported; those accounts fall back to no proxy).
 
 Probe a proxy without risking an account: resolves the effective proxy
 (explicit `proxy_url` wins; otherwise the account's direct URL or `pool:<name>`
-assignment), launches a throwaway browser (no account cookies, never the warm
-session, never x.com), fetches an IP-echo page, returns `{proxy (masked),
-egress_ip, latency_ms}`. Failure returns a credential-masked error envelope.
+assignment), launches a throwaway, cookieless browser (no account cookies,
+never the warm session) whose startup performs an anonymous x.com/home load
+before the IP-echo fetch — so `latency_ms` includes browser boot — fetches an
+IP-echo page, returns `{proxy (masked), egress_ip, latency_ms}`. With a
+`round_robin` pool, probing via `account` advances the pool's rotation
+cursor. Failure returns a credential-masked error envelope.
 
 ## Personas
 

@@ -198,5 +198,6 @@ docs/superpowers/
 # Runtime state (drafts, queue, per-account metrics) — local only
 data/drafts.jsonl
 data/engagement_queue.jsonl
+data/proxy_pools_state.json
 data/metrics/*.json
 !data/metrics/tech_innovator_001.json

@@ -92,9 +92,10 @@ SERVER_INSTRUCTIONS = (
     "process_queue call, or the auto_drain worker if the operator enabled it. "
     "Account tools mutate config/accounts.json (validated, backed up); cookie "
     "secrets are imported by server-side file path only. Read-only tools "
-    "(list_accounts, get_account, get_metrics, search_tweets, get_tweet, "
-    "list_queue, list_drafts, get_draft, get_run_status, get_account_health) "
-    "never start a browser."
+    "(list_accounts, get_account, get_metrics, list_queue, list_drafts, "
+    "get_draft, get_run_status, get_account_health) never start a browser. "
+    "search_tweets, get_tweet, and prepare_reply are read-only (they never "
+    "post) but reuse the account's browser session."
 )
 
 
