@@ -12,6 +12,7 @@ from helpers import (  # noqa: F401 — imported fixtures register for this modu
     config_loader,
     draft_store,
     drafts_path,
+    make_account,
     mcp_settings,
     session_pool,
 )
@@ -177,3 +178,31 @@ async def test_process_queue_drains_via_injected_runner(queue_server, queue_stor
 async def test_process_queue_unknown_account_envelope(queue_server):
     result = await call_tool(queue_server, "process_queue", {"account": "ghost"})
     assert_error_envelope(result, "ghost")
+
+
+@pytest.fixture
+def paused_server(make_config_loader, session_pool, draft_store, queue_store, queue_runner):
+    loader = make_config_loader(
+        settings={},
+        accounts=[make_account("acc1"), make_account("acc2", is_active=False)],
+    )
+    pool = session_pool.__class__(loader, browser_factory=lambda d: None)
+    server = create_server(config_loader=loader, session_pool=pool,
+                           draft_store=draft_store, queue_store=queue_store,
+                           queue_runner=queue_runner)
+    server.xuse_ctx.processed_keys = set()
+    return server
+
+
+@pytest.mark.asyncio
+async def test_queue_post_rejects_paused_account(paused_server):
+    result = await call_tool(paused_server, "queue_post", {"account": "acc2", "text": "hi"})
+    assert_error_envelope(result, "paused")
+
+
+@pytest.mark.asyncio
+async def test_queue_engagement_rejects_paused_account(paused_server):
+    result = await call_tool(paused_server, "queue_engagement",
+                             {"account": "acc2", "action": "like",
+                              "tweet_url": "https://x.com/a/status/1"})
+    assert_error_envelope(result, "paused")

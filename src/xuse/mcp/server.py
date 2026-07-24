@@ -103,6 +103,13 @@ def _queue_store_path(queue_cfg: QueueConfig) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+def _is_active_account(config_loader: ConfigLoader, account_id: str) -> bool:
+    for raw in config_loader.get_accounts_config():
+        if isinstance(raw, dict) and raw.get("account_id") == account_id:
+            return bool(raw.get("is_active", True))
+    return False
+
+
 @asynccontextmanager
 async def _lifespan(server: FastMCP):
     """FastMCP lifespan: start the opt-in auto-drain worker on boot and stop
@@ -168,6 +175,7 @@ def create_server(
             queue_cfg,
             executor=build_executor(ctx),
             already_done=lambda key: is_processed(ctx, key),
+            account_filter=lambda aid: _is_active_account(config_loader, aid),
         )
     scheduler = None
     if queue_cfg.auto_drain.enabled:

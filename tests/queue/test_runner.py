@@ -179,3 +179,22 @@ async def test_empty_queue_returns_zero_report(tmp_path):
     store, runner = make_runner(tmp_path)
     report = await runner.drain("acc1", 5)
     assert (report.succeeded, report.failed, report.skipped_cap) == (0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_drain_all_accounts_respects_account_filter(tmp_path):
+    store = QueueStore(tmp_path / "q.jsonl")
+    runner = QueueRunner(
+        store,
+        QueueConfig(min_delay_seconds=90, max_delay_seconds=240),
+        RecordingExecutor(),
+        sleep_fn=FakeSleep(),
+        jitter_fn=lambda low, high: low,
+        now_fn=Clock(),
+        account_filter=lambda account: account != "b",
+    )
+    add(store, account="a", key="like_a_1")
+    add(store, account="b", key="like_b_1")
+    report = await runner.drain(None, 5)
+    assert report.succeeded == 1
+    assert store.get(store.list(account="b")[0].queue_id).status == "pending"

@@ -37,7 +37,9 @@ class DrainReport(BaseModel):
 
 
 class QueueRunner:
-    """Drains due queue items through the injected executor."""
+    """Drains due queue items through the injected executor. Injected
+    callables: executor (required), already_done, sleep/jitter/now fns, and
+    an optional account_filter that excludes accounts from drain-all runs."""
 
     def __init__(
         self,
@@ -45,6 +47,7 @@ class QueueRunner:
         config: Optional[QueueConfig] = None,
         executor: Optional[ExecutorFn] = None,
         already_done: Optional[AlreadyDoneFn] = None,
+        account_filter: Optional[Callable[[str], bool]] = None,
         sleep_fn: Callable[[float], Awaitable[None]] = asyncio.sleep,
         jitter_fn: Callable[[float, float], float] = random.uniform,
         now_fn: Callable[[], datetime] = _default_now,
@@ -55,6 +58,7 @@ class QueueRunner:
         self.config = config or QueueConfig()
         self.executor = executor
         self.already_done = already_done
+        self.account_filter = account_filter
         self.sleep_fn = sleep_fn
         self.jitter_fn = jitter_fn
         self.now_fn = now_fn
@@ -64,7 +68,13 @@ class QueueRunner:
         """Execute due items with pacing and caps. account_id=None drains
         every account with due items (each bounded by max_actions)."""
         budget = max(1, int(max_actions or self.config.max_actions_per_run))
-        accounts = [account_id] if account_id else self.store.due_accounts(self.now_fn())
+        if account_id:
+            accounts = [account_id]
+        else:
+            accounts = [
+                a for a in self.store.due_accounts(self.now_fn())
+                if self.account_filter is None or self.account_filter(a)
+            ]
         report = DrainReport(account=account_id)
         for acc in accounts:
             await self._drain_account(acc, budget, report)

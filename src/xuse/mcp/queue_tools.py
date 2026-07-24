@@ -98,7 +98,11 @@ def register_queue_tools(server, ctx: Ctx) -> None:
         payload is final — list_queue shows exactly what will be posted).
         `not_before` is an optional ISO 8601 timestamp. Nothing executes
         until process_queue is called (or auto_drain, if enabled)."""
-        account_id, _, _ = ex.resolve_account(ctx, account)
+        account_id, raw, _ = ex.resolve_account(ctx, account)
+        if not raw.get("is_active", True):
+            raise ToolError(
+                f"Account '{account_id}' is paused (is_active=false). "
+                "Re-enable it with set_account_active before queueing work.")
         if (text is None) == (topic is None):
             raise ToolError("Pass exactly one of `text` or `topic`.")
         final_text = text.strip() if text is not None else ""
@@ -121,7 +125,11 @@ def register_queue_tools(server, ctx: Ctx) -> None:
         one of like/retweet/reply. reply requires `text` ("auto" scrapes the
         tweet and generates the reply NOW, so the stored payload is final).
         Nothing executes until process_queue is called."""
-        account_id, _, _ = ex.resolve_account(ctx, account)
+        account_id, raw, _ = ex.resolve_account(ctx, account)
+        if not raw.get("is_active", True):
+            raise ToolError(
+                f"Account '{account_id}' is paused (is_active=false). "
+                "Re-enable it with set_account_active before queueing work.")
         action = (action or "").strip().lower()
         if action not in _ENGAGEMENT_ACTIONS:
             raise ToolError(
