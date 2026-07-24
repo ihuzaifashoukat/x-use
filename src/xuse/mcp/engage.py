@@ -127,7 +127,7 @@ def register_engage_tool(server, ctx: Ctx) -> None:
                     },
                     preview=(
                         f"{verb} as @{account_id} — tweet {tweet.tweet_id} by "
-                        f"@{tweet.user_handle or 'user'}: \"{(tweet.text_content or '')[:100]}\""
+                        f"@{(tweet.user_handle or '').lstrip('@') or 'user'}: \"{(tweet.text_content or '')[:100]}\""
                     ),
                 )
                 drafts.append(json.loads(draft.model_dump_json()))

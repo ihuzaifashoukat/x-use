@@ -19,6 +19,7 @@ def configure_driver_options(
     proxy: Optional[str],
     additional_options: Optional[list],
     custom_user_agent: Optional[str] = None,
+    for_undetected: bool = False,
 ) -> Union[ChromeOptions, FirefoxOptions]:
     user_agent = get_user_agent(custom_user_agent)
     options.add_argument(f"user-agent={user_agent}")
@@ -54,8 +55,11 @@ def configure_driver_options(
             else:
                 logger.warning(f"Proxy URL appears invalid for Firefox prefs: {proxy}")
 
-    # Reduce automation fingerprints for Chrome
-    if browser_type == 'chrome':
+    # Reduce automation fingerprints for Chrome — plain chromedriver only.
+    # undetected-chromedriver applies its own equivalents internally, and
+    # passing excludeSwitches through its capability flow makes modern
+    # chromedriver reject the session ("unrecognized chrome option").
+    if browser_type == 'chrome' and not for_undetected:
         try:
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option('useAutomationExtension', False)

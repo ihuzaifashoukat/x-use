@@ -93,6 +93,7 @@ class BrowserManager:
         
         if browser_type == 'chrome':
             from selenium.webdriver.chrome.options import Options as ChromeOptions  # local import to avoid heavy deps at import time
+            use_uc = bool(self.browser_settings.get('use_undetected_chromedriver', False))
             options = configure_driver_options(
                 ChromeOptions(),
                 'chrome',
@@ -101,12 +102,15 @@ class BrowserManager:
                 proxy=self.effective_proxy,
                 additional_options=driver_options_extra,
                 custom_user_agent=self.browser_settings.get('custom_user_agent') if self.browser_settings.get('user_agent_generation') == 'custom' else None,
+                for_undetected=use_uc,
             )
-            use_uc = bool(self.browser_settings.get('use_undetected_chromedriver', False))
             service_args = self.browser_settings.get('chrome_service_args', [])
             configured_path = self.browser_settings.get('chrome_driver_path')
             try:
-                self.driver = init_chrome_driver(options, use_undetected=use_uc, configured_path=configured_path, service_args=service_args)
+                self.driver = init_chrome_driver(
+                    options, use_undetected=use_uc, configured_path=configured_path,
+                    service_args=service_args,
+                    version_main=self.browser_settings.get('chrome_version_main'))
             except Exception as e:
                 logger.error(f"Failed to initialize Chrome driver: {e}", exc_info=True)
                 self.driver = None

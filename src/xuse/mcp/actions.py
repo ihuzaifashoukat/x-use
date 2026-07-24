@@ -163,10 +163,12 @@ async def generate_reply_text(ctx: Ctx, account_id: str, original: ScrapedTweet)
     settings = ex.llm_settings_for(model, action_config, "reply")
     service = ex.require_llm(ctx)
     # Same reply prompt pattern as the orchestrator's keyword-reply pipeline.
+    # Scraper handles arrive @-prefixed; normalize so the prompt never shows "@@".
+    handle = (original.user_handle or "").lstrip("@") or "user"
     prompt = (
         f"Write a concise, natural reply under {ex.MAX_REPLY_CHARS} characters. This is a standalone tweet. "
         "Avoid hashtags, links, and emojis unless essential. One short paragraph.\n\n"
-        f"Original tweet by @{original.user_handle or 'user'}:\n"
+        f"Original tweet by @{handle}:\n"
         f"\"{original.text_content}\"\n\nYour reply:"
     )
     text = await service.generate_text(

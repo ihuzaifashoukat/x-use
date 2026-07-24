@@ -84,41 +84,31 @@ class TweetEngagement:
                 logger.error(f"Tweet {tweet_id} not found even after navigating to {tweet_url}.")
                 return False
 
-            # Find the like button within the tweet card element or on the page
-            # The data-testid for the like button is usually "like"
-            like_button_xpath = './/button[@data-testid="like"]' # Relative to tweet_card_element
-            
-            like_button = WebDriverWait(tweet_card_element, 10).until(
-                EC.element_to_be_clickable((By.XPATH, like_button_xpath))
-            )
-
-            # Check if already liked (Twitter often changes the 'aria-label' or 'data-testid' for liked state)
-            # For example, aria-label might change from "Like" to "Unlike"
-            # Or data-testid might change, e.g. from "like" to "unlike"
-            aria_label = like_button.get_attribute("aria-label")
-            if aria_label and "unlike" in aria_label.lower():
+            # Already liked? On current X the button flips to
+            # data-testid="unlike" — check that FIRST, before waiting on a
+            # "like" button that will never exist in that state.
+            if tweet_card_element.find_elements(By.XPATH, './/button[@data-testid="unlike"]'):
                 logger.info(f"Tweet {tweet_id} is already liked.")
-                return True # Considered success as the state is "liked"
+                return True
 
-            # Alternative check if data-testid changes (less common for like button itself)
-            # if like_button.get_attribute("data-testid") == "unlike":
-            #    logger.info(f"Tweet {tweet_id} is already liked (data-testid indicates unlike).")
-            #    return True
-
+            like_button = WebDriverWait(tweet_card_element, 10).until(
+                EC.element_to_be_clickable((By.XPATH, './/button[@data-testid="like"]'))
+            )
             like_button.click()
             logger.info(f"Clicked like button for tweet {tweet_id}.")
-            
-            # Optionally, wait for a visual confirmation (e.g., button state change)
-            time.sleep(1) # Brief pause for action to register
 
-            # Verify if liked (e.g., check aria-label again)
-            # Re-fetch the button as its state might have changed its properties
-            updated_like_button = tweet_card_element.find_element(By.XPATH, like_button_xpath)
-            if "unlike" in updated_like_button.get_attribute("aria-label").lower():
+            # Confirm: a successful click flips the button to "unlike".
+            # (The old check re-queried data-testid="like" and read its
+            # aria-label — both broke on current X: the testid flips, and the
+            # aria text is "N Likes. Liked", not "Unlike". Found in live testing.)
+            try:
+                WebDriverWait(tweet_card_element, 5).until(
+                    EC.presence_of_element_located((By.XPATH, './/button[@data-testid="unlike"]'))
+                )
                 logger.info(f"Successfully liked tweet {tweet_id}.")
                 return True
-            else:
-                logger.warning(f"Failed to confirm like for tweet {tweet_id} (aria-label did not change to 'Unlike').")
+            except TimeoutException:
+                logger.warning(f"Failed to confirm like for tweet {tweet_id} (button never flipped to 'unlike').")
                 return False
 
         except TimeoutException:

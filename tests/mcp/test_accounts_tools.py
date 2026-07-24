@@ -146,3 +146,23 @@ async def test_remove_account_removes_and_refreshes(mcp_server, config_loader):
     assert [a["account_id"] for a in read_disk(config_loader)] == ["acc2"]
     listed = await call_tool(mcp_server, "list_accounts", {})
     assert [a["account_id"] for a in listed["accounts"]] == ["acc2"]
+
+
+@pytest.mark.asyncio
+async def test_add_account_cookie_source_already_at_convention_path(
+    mcp_server, config_loader, isolated_config_dir
+):
+    """Regression (found in live testing): when the cookie export already
+    sits at config/<account_id>_cookies.json, the import must use it in
+    place — shutil.copyfile onto itself raises SameFileError."""
+    convention = isolated_config_dir / "acc3_cookies.json"
+    convention.write_text(json.dumps([
+        {"name": "auth_token", "value": "secret-token"},
+        {"name": "ct0", "value": "secret-csrf"},
+    ]), encoding="utf-8")
+    result = await call_tool(mcp_server, "add_account",
+                             {"account_id": "acc3", "cookie_file": str(convention)})
+    assert result["ok"] is True
+    entry = [a for a in read_disk(config_loader) if a["account_id"] == "acc3"][0]
+    assert entry["cookie_file_path"] == "config/acc3_cookies.json"
+    assert convention.is_file()

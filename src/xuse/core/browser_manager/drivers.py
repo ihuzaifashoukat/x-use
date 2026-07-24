@@ -1,5 +1,8 @@
 import logging
+import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -31,16 +34,52 @@ except Exception:
     selenium_stealth_apply = None  # type: ignore
 
 
+def _detect_chrome_major_version() -> Optional[int]:
+    """Best-effort installed-Chrome major version. undetected-chromedriver
+    otherwise fetches the LATEST driver build, which refuses to drive a
+    browser one major behind ("This version of ChromeDriver only supports
+    Chrome version N+1")."""
+    try:
+        if sys.platform.startswith("win"):
+            import winreg
+            for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                for path in (r"Software\Google\Chrome\BLBeacon", r"Software\Chromium\BLBeacon"):
+                    try:
+                        with winreg.OpenKey(root, path) as key:
+                            value, _ = winreg.QueryValueEx(key, "version")
+                        return int(str(value).split(".")[0])
+                    except OSError:
+                        continue
+        else:
+            for binary in ("google-chrome", "chromium", "chromium-browser"):
+                path = shutil.which(binary)
+                if not path:
+                    continue
+                out = subprocess.check_output([path, "--version"], timeout=10, text=True)
+                match = re.search(r"(\d+)\.", out or "")
+                if match:
+                    return int(match.group(1))
+    except Exception:
+        pass
+    return None
+
+
 def init_chrome_driver(
     options: ChromeOptions,
     *,
     use_undetected: bool,
     configured_path: Optional[str],
     service_args: Optional[list],
+    version_main: Optional[int] = None,
 ) -> WebDriver:
     if use_undetected and UC_AVAILABLE:
         logger.info("Using undetected_chromedriver for Chrome.")
-        return uc.Chrome(options=options)  # type: ignore
+        pinned = version_main or _detect_chrome_major_version()
+        kwargs = {"options": options}
+        if pinned:
+            kwargs["version_main"] = pinned  # fetch the driver matching the installed browser
+            logger.info("Pinning undetected-chromedriver to Chrome major version %s.", pinned)
+        return uc.Chrome(**kwargs)  # type: ignore
     local_driver = configured_path or shutil.which('chromedriver')
     if local_driver:
         logger.info(f"Using local chromedriver at: {local_driver}")

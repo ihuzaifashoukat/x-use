@@ -194,3 +194,9 @@ AGENTS.md
 CLAUDE.md
 .claude/
 docs/superpowers/
+
+# Runtime state (drafts, queue, per-account metrics) — local only
+data/drafts.jsonl
+data/engagement_queue.jsonl
+data/metrics/*.json
+!data/metrics/tech_innovator_001.json

@@ -126,11 +126,12 @@ def register_write_tools(server, ctx: Ctx) -> None:
         if not tweet_id:
             raise ToolError(f"Could not parse a tweet id from URL: {tweet_url}")
         original = await scrape_single_tweet(ctx, account_id, tweet_url, tweet_id)
+        handle = (original.user_handle or "").lstrip("@")  # scraper handles arrive @-prefixed
         return ok_(
             account=account_id,
             tweet_id=tweet_id,
             tweet_url=tweet_url,
-            author=f"@{original.user_handle}" if original.user_handle else None,
+            author=f"@{handle}" if handle else None,
             text_content=original.text_content or "",
             account_keywords=list(getattr(model, "target_keywords", None) or []),
             max_reply_chars=ex.MAX_REPLY_CHARS,

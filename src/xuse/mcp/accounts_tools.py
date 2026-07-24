@@ -69,9 +69,15 @@ def _import_cookies(account_id: str, cookie_file: str) -> str:
     if not valid:
         raise ToolError("Cookie file failed validation: " + "; ".join(problems))
     dest = CONFIG_DIR / f"{account_id}_cookies.json"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(src, dest)
-    logger.info("Imported cookies for account '%s' to %s.", account_id, dest)
+    if src.resolve() == dest.resolve():
+        # The export already sits at the convention path (e.g. the user named
+        # it config/<account_id>_cookies.json) — copying it onto itself raises
+        # SameFileError; validate and use it in place instead.
+        logger.info("Cookie file for account '%s' already at %s; using in place.", account_id, dest)
+    else:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dest)
+        logger.info("Imported cookies for account '%s' to %s.", account_id, dest)
     return f"config/{account_id}_cookies.json"
 
 
