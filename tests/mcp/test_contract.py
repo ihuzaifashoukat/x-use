@@ -67,6 +67,10 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
                            "required": {"account", "keywords"}},
     "draft_post_variations": {"params": {"account", "topic", "count"},
                               "required": {"account", "topic"}},
+    "list_proxies": {"params": set(), "required": set()},
+    "add_proxy": {"params": {"pool", "proxy_url"}, "required": {"pool", "proxy_url"}},
+    "remove_proxy": {"params": {"pool", "proxy_url", "confirm"}, "required": {"pool", "proxy_url"}},
+    "test_proxy": {"params": {"account", "proxy_url"}, "required": set()},
 }
 
 

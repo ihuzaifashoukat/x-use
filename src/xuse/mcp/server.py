@@ -1,6 +1,6 @@
 """x-use MCP server — official MCP Python SDK v1.x ``FastMCP`` over stdio.
 
-Exposes the engine as 24 tools (see ``tools.py``): read-only/status tools,
+Exposes the engine as 32 tools (see ``tools.py``): read-only/status tools,
 draft-gated immediate writes, the scheduled-action queue, and account
 management. Run directly::
 

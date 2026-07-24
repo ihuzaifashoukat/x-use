@@ -213,6 +213,7 @@ def register_tools(server, ctx: Ctx) -> None:
     from .accounts_tools import register_account_tools
     from .composite_tools import register_composite_tools
     from .engage import register_engage_tool
+    from .proxy_tools import register_proxy_tools
     from .queue_tools import register_queue_tools
     from .support_tools import register_support_tools
     from .write_tools import register_write_tools
@@ -223,3 +224,4 @@ def register_tools(server, ctx: Ctx) -> None:
     register_account_tools(server, ctx)
     register_support_tools(server, ctx)
     register_composite_tools(server, ctx)
+    register_proxy_tools(server, ctx)
