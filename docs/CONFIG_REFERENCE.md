@@ -64,34 +64,16 @@ Notes
   - cold_start_timeout_seconds: max wait for a browser session to cold-start before the tool call fails with a structured error. Default `180`.
   - drafts_file: path of the persistent draft store (JSONL). Default `data/drafts.jsonl` under the project root.
 
-### `queue` (optional)
-
-Scheduled-action queue used by the queue MCP tools (`queue_post`, `queue_engagement`, `process_queue`). All keys optional; defaults shown.
-
-```json
-"queue": {
-  "store_file": "data/engagement_queue.jsonl",
-  "max_actions_per_run": 5,
-  "min_delay_seconds": 90,
-  "max_delay_seconds": 240,
-  "max_attempts": 2,
-  "daily_caps": { "post": 5, "reply": 15, "like": 30, "retweet": 10 },
-  "auto_drain": { "enabled": false, "interval_seconds": 900, "max_actions_per_account": 3 }
-}
-```
-
-| Key | Default | Meaning |
-|---|---|---|
-| `store_file` | `data/engagement_queue.jsonl` | JSONL persistence for queued actions (repo-relative or absolute). |
-| `max_actions_per_run` | `5` | Hard budget per `process_queue` call, per account. |
-| `min_delay_seconds` / `max_delay_seconds` | `90` / `240` | Uniform jitter range between executed actions. |
-| `max_attempts` | `2` | Attempts before an item is marked `failed`. Failures requeue with linear backoff (`min_delay * attempts`). |
-| `daily_caps` | `{post: 5, reply: 15, like: 30, retweet: 10}` | Per-account, per-action daily ceilings (UTC day), counted from the queue store itself. |
-| `auto_drain.enabled` | `false` | Opt-in background worker inside the MCP server. |
-| `auto_drain.interval_seconds` | `900` | Seconds between auto-drain ticks. |
-| `auto_drain.max_actions_per_account` | `3` | Per-account budget per tick. |
-
-Queued items execute only via an explicit `process_queue` call or the auto-drain worker. Daily caps and pacing apply on both paths.
+- queue (settings for the scheduled-action queue MCP tools: `queue_post`, `queue_engagement`, `process_queue`)
+  - store_file: JSONL persistence for queued actions (repo-relative or absolute). Default `data/engagement_queue.jsonl`.
+  - max_actions_per_run: hard budget per `process_queue` call, per account. Default `5`.
+  - min_delay_seconds / max_delay_seconds: uniform jitter range between executed actions. Defaults `90` / `240`.
+  - max_attempts: attempts before an item is marked `failed`; failures requeue with linear backoff (`min_delay * attempts`). Default `2`.
+  - daily_caps: per-account, per-action daily ceilings (UTC day), counted from the queue store itself. Default `{post: 5, reply: 15, like: 30, retweet: 10}`.
+  - auto_drain.enabled: opt-in background worker inside the MCP server. Default `false`.
+  - auto_drain.interval_seconds: seconds between auto-drain ticks. Default `900`.
+  - auto_drain.max_actions_per_account: per-account budget per tick. Default `3`.
+  - Queued items execute only via an explicit `process_queue` call or the auto-drain worker. Daily caps and pacing apply on both paths.
 
 accounts.json (per account)
 
