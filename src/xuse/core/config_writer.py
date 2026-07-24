@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from xuse.core.config_loader import normalize_account_dict
-from xuse.models import AccountConfig
+from xuse.models import AccountConfig, ActionConfig
+from xuse.utils.proxy_manager import validate_proxy_url
 
 logger = logging.getLogger(__name__)
 
@@ -54,21 +55,57 @@ class AccountsConfigWriter:
         return updated
 
     def _validate(self, accounts: List[Dict[str, Any]]) -> None:
-        errors = []
+        errors: List[str] = []
         for acc in accounts:
+            label = acc.get("account_id", "<unknown>") if isinstance(acc, dict) else "<unknown>"
+            normalized = normalize_account_dict(acc) if isinstance(acc, dict) else acc
             try:
-                AccountConfig.model_validate(normalize_account_dict(acc))
+                AccountConfig.model_validate(normalized)
             except Exception as e:
-                errors.append(f"{acc.get('account_id', '<unknown>')}: {e}")
+                errors.append(f"{label}: {e}")
+            if not isinstance(acc, dict):
+                continue
+            # Pydantic ignores unknown keys by default, but the RAW dict (not
+            # the cleaned model) is what gets written — so a typo'd knob would
+            # persist and be silently ignored forever. Reject them at the gate.
+            action_config = normalized.get("action_config")
+            if isinstance(action_config, dict):
+                unknown = sorted(set(action_config) - set(ActionConfig.model_fields))
+                if unknown:
+                    errors.append(
+                        f"{label}: unknown action_config key(s): {', '.join(unknown)}")
+            proxy = normalized.get("proxy")
+            if proxy and str(proxy).strip():
+                self._validate_proxy(label, str(proxy).strip(), errors)
         if errors:
             raise ConfigWriteError("Validation failed: " + "; ".join(errors))
+
+    @staticmethod
+    def _validate_proxy(label: str, proxy: str, errors: List[str]) -> None:
+        """Accounts may carry a direct proxy URL (same rules as the MCP proxy
+        tools) or a pool:<name> reference, which only accounts may use."""
+        if proxy.startswith("pool:"):
+            if not proxy[len("pool:"):].strip():
+                errors.append(f"{label}: proxy pool reference 'pool:' has no pool name.")
+            return
+        try:
+            validate_proxy_url(proxy)
+        except ValueError as e:
+            errors.append(f"{label}: {e}")
 
     def _backup(self) -> None:
         if not self.accounts_file.is_file() or self.max_backups <= 0:
             return
-        self.backups_dir.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        shutil.copy2(self.accounts_file, self.backups_dir / f"accounts-{stamp}.json")
+        try:
+            self.backups_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            shutil.copy2(self.accounts_file, self.backups_dir / f"accounts-{stamp}.json")
+        except OSError as e:
+            # The guarantee is "backup before replace": a failed backup must
+            # block the atomic write, and it must surface as the documented
+            # error type, not a raw OSError.
+            raise ConfigWriteError(
+                f"Backup of {self.accounts_file} failed: {e}") from e
         backups = sorted(self.backups_dir.glob("accounts-*.json"))
         for old in backups[:-self.max_backups]:
             try:

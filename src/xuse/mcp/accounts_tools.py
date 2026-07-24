@@ -11,7 +11,7 @@ import logging
 import re
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from xuse.core.config_loader import CONFIG_DIR, PROJECT_ROOT
 from xuse.core.config_writer import AccountsConfigWriter, ConfigWriteError
@@ -55,9 +55,11 @@ def _cookie_status(raw: Dict[str, Any]) -> Dict[str, Any]:
             "cookie_file_exists": path.is_file()}
 
 
-def _import_cookies(account_id: str, cookie_file: str) -> str:
+def _import_cookies(account_id: str, cookie_file: str) -> Tuple[str, Optional[Path]]:
     """Validate and copy a cookie export to config/<account_id>_cookies.json.
-    Returns the repo-relative cookie_file_path (wizard convention)."""
+    Returns (repo-relative cookie_file_path, copied dest path) — the dest is
+    None when the export already sat at the convention path and was used in
+    place, so callers can roll back exactly the copies they made."""
     src = Path(cookie_file).expanduser()
     if not src.is_file():
         raise ToolError(f"Cookie file not found: {cookie_file}")
@@ -74,11 +76,26 @@ def _import_cookies(account_id: str, cookie_file: str) -> str:
         # it config/<account_id>_cookies.json) — copying it onto itself raises
         # SameFileError; validate and use it in place instead.
         logger.info("Cookie file for account '%s' already at %s; using in place.", account_id, dest)
-    else:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dest)
-        logger.info("Imported cookies for account '%s' to %s.", account_id, dest)
-    return f"config/{account_id}_cookies.json"
+        return f"config/{account_id}_cookies.json", None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dest)
+    logger.info("Imported cookies for account '%s' to %s.", account_id, dest)
+    return f"config/{account_id}_cookies.json", dest
+
+
+def _discard_cookie_copy(copied: Optional[Path], account_id: str) -> None:
+    """Roll back a cookie copy whose config mutation then failed — never
+    leave an orphan file (for add_account, one belonging to an account that
+    does not exist). Best-effort: the mutation error takes precedence."""
+    if copied is None:
+        return
+    try:
+        copied.unlink()
+        logger.info("Discarded cookie copy %s after failed mutation for '%s'.",
+                    copied, account_id)
+    except OSError:
+        logger.warning("Could not discard cookie copy %s after failed mutation.",
+                       copied)
 
 
 def register_account_tools(server, ctx: Ctx) -> None:
@@ -112,7 +129,10 @@ def register_account_tools(server, ctx: Ctx) -> None:
         for raw in ctx.config_loader.get_accounts_config():
             if isinstance(raw, dict) and raw.get("account_id") == account_id:
                 raise ToolError(f"Account '{account_id}' already exists.")
-        cookie_rel = _import_cookies(account_id, cookie_file) if cookie_file else None
+        cookie_rel: Optional[str] = None
+        cookie_copied: Optional[Path] = None
+        if cookie_file:
+            cookie_rel, cookie_copied = _import_cookies(account_id, cookie_file)
         entry: Dict[str, Any] = {
             "account_id": account_id,
             "is_active": bool(is_active),
@@ -127,6 +147,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
         try:
             updated = _writer(ctx).mutate(lambda accounts: [*accounts, entry])
         except ConfigWriteError as e:
+            _discard_cookie_copy(cookie_copied, account_id)
             raise ToolError(str(e)) from e
         _refresh(ctx, updated)
         return ok_(account=ex.mask_account(entry),
@@ -150,7 +171,10 @@ def register_account_tools(server, ctx: Ctx) -> None:
         warm browser session is closed, so the next action cold-starts on
         the new config."""
         _known_account(ctx, account)
-        cookie_rel = _import_cookies(account, cookie_file) if cookie_file else None
+        cookie_rel: Optional[str] = None
+        cookie_copied: Optional[Path] = None
+        if cookie_file:
+            cookie_rel, cookie_copied = _import_cookies(account, cookie_file)
 
         def _apply(accounts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             for raw in accounts:
@@ -183,6 +207,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
         try:
             updated = _writer(ctx).mutate(_apply)
         except ConfigWriteError as e:
+            _discard_cookie_copy(cookie_copied, account)
             raise ToolError(str(e)) from e
         _refresh(ctx, updated)
         await ctx.session_pool.close(account)

@@ -22,6 +22,7 @@ from xuse.core.browser_manager import BrowserManager
 from xuse.core.config_loader import PROJECT_ROOT
 from xuse.core.settings_writer import SettingsConfigWriter, SettingsWriteError
 from xuse.utils.proxy_manager import ProxyManager
+from xuse.utils.proxy_manager import validate_proxy_url as _validate_proxy_url
 
 from . import executor as ex
 from .executor import Ctx, ToolError
@@ -43,17 +44,13 @@ def mask_proxy(url: Optional[str]) -> Optional[str]:
 
 def validate_proxy_url(url: str) -> str:
     """Trim + validate scheme and host. URLs containing ${ENV_VAR} pass a
-    structural check only — the env var may legitimately resolve later."""
-    u = (url or "").strip()
-    if not u:
-        raise ToolError("Proxy URL must not be empty.")
-    scheme = u.split("://", 1)[0] if "://" in u else ""
-    if scheme not in _VALID_SCHEMES:
-        raise ToolError(
-            f"Unsupported proxy scheme in {mask_proxy(u)!r}: use {', '.join(_VALID_SCHEMES)}.")
-    if "${" not in u and not urlparse(u).hostname:
-        raise ToolError(f"Proxy URL has no host: {mask_proxy(u)!r}")
-    return u
+    structural check only — the env var may legitimately resolve later.
+    Delegates to the shared validator in xuse.utils.proxy_manager so the MCP
+    tools and the accounts write gate cannot drift."""
+    try:
+        return _validate_proxy_url(url)
+    except ValueError as e:
+        raise ToolError(str(e)) from e
 
 
 def _pools_snapshot(ctx: Ctx) -> Dict[str, Any]:

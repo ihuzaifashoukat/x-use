@@ -51,22 +51,36 @@ class ConfigLoader:
         """
         self.settings_file: Path = Path(settings_file)
         self.accounts_file: Path = Path(accounts_file)
-        
-        self.settings: Dict[str, Any] = self._load_json(self.settings_file, default_value={})
-        self.accounts: List[Dict[str, Any]] = self._load_json(self.accounts_file, default_value=[])
+
+        # Parse/shape errors for files that EXIST but are corrupt. None means
+        # the file loaded cleanly or is simply absent — "corrupt" is surfaced
+        # distinctly from "missing/empty" so tools and operators can tell
+        # "no config" apart from "broken config" (boot semantics unchanged:
+        # corrupt files still yield empty defaults, no exception).
+        self.settings_error: Optional[str] = None
+        self.accounts_error: Optional[str] = None
+
+        self.settings: Dict[str, Any] = self._load_json(
+            self.settings_file, default_value={}, error_attr="settings_error")
+        self.accounts: List[Dict[str, Any]] = self._load_json(
+            self.accounts_file, default_value=[], error_attr="accounts_error")
         
         if not self.settings:
             logger.warning(f"Settings file '{self.settings_file}' was not found or is empty/invalid. Using empty settings.")
         if not self.accounts:
             logger.warning(f"Accounts file '{self.accounts_file}' was not found or is empty/invalid. Using empty accounts list.")
 
-    def _load_json(self, file_path: Path, default_value: Union[Dict, List]) -> Any:
+    def _load_json(self, file_path: Path, default_value: Union[Dict, List],
+                   error_attr: Optional[str] = None) -> Any:
         """
         Loads a JSON file.
 
         Args:
             file_path (Path): The path to the JSON file.
             default_value (Union[Dict, List]): The default value to return if loading fails.
+            error_attr (Optional[str]): Instance attribute that receives a
+                human-readable parse/shape error when the file EXISTS but is
+                corrupt (invalid JSON, unreadable, or the wrong JSON type).
 
         Returns:
             Any: The loaded JSON data or the default value.
@@ -75,20 +89,34 @@ class ConfigLoader:
             logger.error(f"Configuration file not found: {file_path}")
             return default_value
         if not file_path.is_file():
-            logger.error(f"Configuration path is not a file: {file_path}")
+            self._mark_corrupt(error_attr, file_path, "path exists but is not a file")
             return default_value
-            
+
         try:
             with file_path.open('r', encoding='utf-8') as f:
                 data = json.load(f)
-                logger.debug(f"Successfully loaded JSON from {file_path}")
-                return data
         except json.JSONDecodeError as e:
-            logger.error(f"Could not decode JSON from {file_path}: {e}")
+            self._mark_corrupt(error_attr, file_path, f"invalid JSON: {e}")
             return default_value
         except Exception as e:
-            logger.error(f"An unexpected error occurred while loading {file_path}: {e}")
+            self._mark_corrupt(error_attr, file_path, f"unreadable: {e}")
             return default_value
+        if not isinstance(data, type(default_value)):
+            self._mark_corrupt(
+                error_attr, file_path,
+                f"expected a JSON {type(default_value).__name__}, "
+                f"got {type(data).__name__}")
+            return default_value
+        logger.debug(f"Successfully loaded JSON from {file_path}")
+        return data
+
+    def _mark_corrupt(self, error_attr: Optional[str], file_path: Path, detail: str) -> None:
+        """Record + loudly log a present-but-unusable config file."""
+        if error_attr:
+            setattr(self, error_attr, f"{file_path}: {detail}")
+        logger.error(
+            "CORRUPT configuration file %s (%s) — booting with empty defaults; "
+            "fix or remove the file.", file_path, detail)
 
     def get_settings(self) -> Dict[str, Any]:
         """Returns all loaded settings."""

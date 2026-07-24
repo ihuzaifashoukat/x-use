@@ -2,6 +2,7 @@ import hashlib
 import os
 import re
 from typing import Optional, Dict, Any, List
+from urllib.parse import urlparse
 
 try:
     from ..core.config_loader import ConfigLoader, PROJECT_ROOT
@@ -10,6 +11,39 @@ except ImportError:
     from pathlib import Path
     sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
     from xuse.core.config_loader import ConfigLoader, PROJECT_ROOT
+
+
+VALID_PROXY_SCHEMES = ("http", "https", "socks4", "socks5")
+_USERINFO_RE = re.compile(r"(://)[^@/\s]+@")
+
+
+def mask_proxy_url(url: Optional[str]) -> Optional[str]:
+    """Mask the whole userinfo: http://user:pass@host:port -> http://***@host:port."""
+    if not url:
+        return url
+    return _USERINFO_RE.sub(r"\1***@", str(url))
+
+
+def validate_proxy_url(url: str) -> str:
+    """Trim + validate scheme and host; returns the trimmed URL.
+
+    Raises ValueError on empty input, an unsupported scheme, or a missing
+    host. URLs containing ${ENV_VAR} pass a structural check only — the env
+    var may legitimately resolve later. This is the single shared validator:
+    the MCP proxy tools wrap it (ValueError -> ToolError) and the accounts
+    config writer enforces it at the write gate.
+    """
+    u = (url or "").strip()
+    if not u:
+        raise ValueError("Proxy URL must not be empty.")
+    scheme = u.split("://", 1)[0] if "://" in u else ""
+    if scheme not in VALID_PROXY_SCHEMES:
+        raise ValueError(
+            f"Unsupported proxy scheme in {mask_proxy_url(u)!r}: "
+            f"use {', '.join(VALID_PROXY_SCHEMES)}.")
+    if "${" not in u and not urlparse(u).hostname:
+        raise ValueError(f"Proxy URL has no host: {mask_proxy_url(u)!r}")
+    return u
 
 
 class ProxyManager:
