@@ -160,6 +160,7 @@ def register_tools(server, ctx: Ctx) -> None:
     # Write tools: post_tweet, generate_and_post, reply_to_tweet, engage,
     # run_cycle. Queue tools land in the queue task; account/support tools
     # register in their own tasks.
+    from .accounts_tools import register_account_tools
     from .engage import register_engage_tool
     from .queue_tools import register_queue_tools
     from .write_tools import register_write_tools
@@ -167,3 +168,4 @@ def register_tools(server, ctx: Ctx) -> None:
     register_write_tools(server, ctx)
     register_engage_tool(server, ctx)
     register_queue_tools(server, ctx)
+    register_account_tools(server, ctx)

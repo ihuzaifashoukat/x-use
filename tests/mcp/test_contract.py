@@ -46,6 +46,14 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "list_queue": {"params": {"account", "status"}, "required": set()},
     "cancel_queued_action": {"params": {"queue_id"}, "required": {"queue_id"}},
     "process_queue": {"params": {"account", "max_actions"}, "required": set()},
+    "get_account": {"params": {"account"}, "required": {"account"}},
+    "add_account": {"params": {"account_id", "cookie_file", "proxy", "target_keywords",
+                               "is_active"}, "required": {"account_id"}},
+    "update_account": {"params": {"account", "is_active", "proxy", "target_keywords",
+                                  "competitor_profiles", "self_handles", "cookie_file",
+                                  "action_config"}, "required": {"account"}},
+    "set_account_active": {"params": {"account", "active"}, "required": {"account", "active"}},
+    "remove_account": {"params": {"account", "confirm"}, "required": {"account"}},
 }
 
 
