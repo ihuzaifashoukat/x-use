@@ -145,7 +145,9 @@ async def generate_post_text(ctx: Ctx, account_id: str, topic: str) -> str:
     action_config = ex.current_action_config(ctx, model)
     settings = ex.llm_settings_for(model, action_config, "post")
     service = ex.require_llm(ctx)
-    prompt = f"Write an engaging X (Twitter) post about: {topic}"
+    persona_note = (f"Write in this account persona:\n{model.persona}\n\n"
+                    if getattr(model, "persona", None) else "")
+    prompt = f"{persona_note}Write an engaging X (Twitter) post about: {topic}"
     text = await generate_post_text_if_needed(prompt, settings, service)
     if not text or not text.strip():
         raise ToolError("LLM returned no usable post text.")
@@ -165,7 +167,10 @@ async def generate_reply_text(ctx: Ctx, account_id: str, original: ScrapedTweet)
     # Same reply prompt pattern as the orchestrator's keyword-reply pipeline.
     # Scraper handles arrive @-prefixed; normalize so the prompt never shows "@@".
     handle = (original.user_handle or "").lstrip("@") or "user"
+    persona_note = (f"Write in this account persona:\n{model.persona}\n\n"
+                    if getattr(model, "persona", None) else "")
     prompt = (
+        f"{persona_note}"
         f"Write a concise, natural reply under {ex.MAX_REPLY_CHARS} characters. This is a standalone tweet. "
         "Avoid hashtags, links, and emojis unless essential. One short paragraph.\n\n"
         f"Original tweet by @{handle}:\n"

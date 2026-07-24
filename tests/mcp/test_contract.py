@@ -63,6 +63,10 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "reject_draft": {"params": {"draft_id"}, "required": {"draft_id"}},
     "get_run_status": {"params": {"run_id"}, "required": set()},
     "get_account_health": {"params": {"account"}, "required": {"account"}},
+    "research_and_stage": {"params": {"account", "keywords", "max_items"},
+                           "required": {"account", "keywords"}},
+    "draft_post_variations": {"params": {"account", "topic", "count"},
+                              "required": {"account", "topic"}},
 }
 
 

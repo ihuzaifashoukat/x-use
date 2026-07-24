@@ -211,6 +211,7 @@ def register_tools(server, ctx: Ctx) -> None:
     # run_cycle. Queue tools land in the queue task; account/support tools
     # register in their own tasks.
     from .accounts_tools import register_account_tools
+    from .composite_tools import register_composite_tools
     from .engage import register_engage_tool
     from .queue_tools import register_queue_tools
     from .support_tools import register_support_tools
@@ -221,3 +222,4 @@ def register_tools(server, ctx: Ctx) -> None:
     register_queue_tools(server, ctx)
     register_account_tools(server, ctx)
     register_support_tools(server, ctx)
+    register_composite_tools(server, ctx)
