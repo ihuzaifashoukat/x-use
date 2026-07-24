@@ -165,6 +165,7 @@ lerna-debug.log*
 
 # Config files with sensitive information
 config/accounts.json
+config/backups/
 # Consider adding settings.json if it contains sensitive API keys not managed by .env
 # config/settings.json
 # Or provide a template like config/settings.example.json
