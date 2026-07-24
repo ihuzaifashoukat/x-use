@@ -13,6 +13,8 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from pydantic import BaseModel, Field
 
+from xuse.utils.sanitize import sanitize_text
+
 from .models import QueueConfig, QueuedAction
 from .store import QueueStore, is_due
 
@@ -125,7 +127,10 @@ class QueueRunner:
             try:
                 result = await self.executor(item)
             except Exception as e:
-                message = str(e)
+                # Sanitize BEFORE persisting/reporting: executor errors can
+                # carry proxy credentials (cold-start failures), and last_error
+                # lands in ok:true responses and the on-disk queue JSONL.
+                message = sanitize_text(e)
                 attempt = self.store.record_attempt(item.queue_id, message)
                 if attempt.attempts >= self.config.max_attempts:
                     self.store.set_status(item.queue_id, "failed")

@@ -57,11 +57,9 @@ class Ctx:
 # Error sanitizing (NFR-2: never echo cookies, API keys, proxy credentials)
 # ---------------------------------------------------------------------------
 
-_URL_CREDENTIALS_RE = re.compile(r"(://[^:/\s]+):([^@\s]+)@")
-
-
-def sanitize_text(text: Any) -> str:
-    return _URL_CREDENTIALS_RE.sub(r"\1:***@", str(text))
+# Re-export the shared whole-userinfo masker (xuse.utils.sanitize); the queue
+# runner uses it directly for last_error persistence.
+from xuse.utils.sanitize import sanitize_text  # noqa: F401
 
 
 def error_envelope(exc_type: str, message: Any) -> Dict[str, Any]:
