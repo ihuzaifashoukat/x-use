@@ -69,6 +69,19 @@ def test_images_for_tweet_respects_limit(monkeypatch):
     assert len(m.images_for_tweet(tweet, limit=3)) == 3
 
 
+def test_images_for_tweet_filters_before_limiting(monkeypatch):
+    """Regression: a video-first tweet must still yield its image — the limit
+    applies to fetched images, not to raw media items."""
+    monkeypatch.setattr(m.requests, "get",
+                        lambda url, timeout: FakeResponse(make_png_bytes()))
+    tweet = FakeTweet([
+        FakeItem("video", "https://pbs.twimg.com/media/poster.jpg"),
+        FakeItem("image", "https://pbs.twimg.com/media/a.jpg"),
+        FakeItem("image", "https://pbs.twimg.com/media/b.jpg"),
+    ])
+    assert len(m.images_for_tweet(tweet, limit=1)) == 1  # video skipped before limiting
+
+
 def test_media_envelope_serializes_all_items_with_alt():
     tweet = FakeTweet([
         FakeItem("image", "https://pbs.twimg.com/media/a.jpg", "chart"),

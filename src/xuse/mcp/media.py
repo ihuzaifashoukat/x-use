@@ -58,7 +58,9 @@ def images_for_tweet(tweet, limit: int = MAX_IMAGES_PER_TWEET) -> List[ImageCont
     """Fetch up to `limit` photo images for a tweet (videos stay URL-only).
     Synchronous — call via asyncio.to_thread from async tools."""
     images: List[ImageContent] = []
-    for item in (getattr(tweet, "media", None) or [])[:limit]:
+    for item in (getattr(tweet, "media", None) or []):
+        if len(images) >= limit:
+            break
         if item.type != "image":
             continue
         block = fetch_image(str(item.url))
