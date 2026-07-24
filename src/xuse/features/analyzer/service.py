@@ -21,13 +21,21 @@ from .schema import structured_analysis_schema
 from .heuristics import keyword_relevance_score, heuristic_sentiment
 
 
-config_loader_instance = ConfigLoader()
-setup_logger(config_loader_instance)
 logger = logging.getLogger(__name__)
+
+
+def _ensure_logging(config_loader: Optional[ConfigLoader] = None) -> None:
+    """Configure x-use logging lazily, on first use — never at import time
+    (importing this module must not reconfigure the host application's root
+    logger or read config), and never over existing root handlers."""
+    if logging.getLogger().handlers:
+        return
+    setup_logger(config_loader)
 
 
 class TweetAnalyzer:
     def __init__(self, llm_service: LLMService, account_config: Optional[AccountConfig] = None):
+        _ensure_logging(llm_service.config_loader)
         self.llm_service = llm_service
         self.account_config = account_config  # For account-specific LLM settings if needed
         self.config_loader = llm_service.config_loader  # Reuse config loader

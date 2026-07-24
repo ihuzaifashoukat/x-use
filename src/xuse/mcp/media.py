@@ -25,6 +25,10 @@ FETCH_TIMEOUT_SECONDS = 5
 MAX_DIMENSION = 1024
 MAX_BYTES = 200_000
 MAX_DOWNLOAD_BYTES = 8_000_000
+# Decoded-pixel gate (decompression-bomb class): a small-on-the-wire image can
+# still cost hundreds of MB of process memory to decode, so dimensions are
+# checked from the header before any bitmap is materialized.
+MAX_IMAGE_PIXELS = 40_000_000
 
 
 def _is_allowed_image_url(url: str) -> bool:
@@ -39,22 +43,55 @@ def _is_allowed_image_url(url: str) -> bool:
     return host == "twimg.com" or host.endswith(".twimg.com")
 
 
+def _download(url: str) -> Optional[bytes]:
+    """Stream the body with a hard cap: reject oversized Content-Length up
+    front and abort the stream past MAX_DOWNLOAD_BYTES, so the wire cap limits
+    what is transferred, not just what is kept."""
+    resp = requests.get(url, timeout=FETCH_TIMEOUT_SECONDS, stream=True)
+    try:
+        resp.raise_for_status()
+        declared = resp.headers.get("Content-Length")
+        if declared is not None:
+            try:
+                if int(declared) > MAX_DOWNLOAD_BYTES:
+                    return None
+            except (TypeError, ValueError):
+                pass  # unparseable header — fall through to the streaming cap
+        chunks: List[bytes] = []
+        downloaded = 0
+        for chunk in resp.iter_content(chunk_size=65536):
+            downloaded += len(chunk)
+            if downloaded > MAX_DOWNLOAD_BYTES:
+                return None
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        resp.close()
+
+
 def fetch_image(url: str) -> Optional[ImageContent]:
     """Download one image and return a bounded JPEG ImageContent, or None."""
     if not _is_allowed_image_url(url):
         return None
     try:
-        resp = requests.get(url, timeout=FETCH_TIMEOUT_SECONDS)
-        resp.raise_for_status()
-        if len(resp.content) > MAX_DOWNLOAD_BYTES:
-            return None
-        raw = resp.content
+        raw = _download(url)
     except Exception:
         logger.info("Image fetch failed: %s", url, exc_info=True)
         return None
+    if raw is None:
+        logger.info("Image exceeds the %d-byte download cap: %s", MAX_DOWNLOAD_BYTES, url)
+        return None
     try:
         from PIL import Image
-        img = Image.open(io.BytesIO(raw)).convert("RGB")
+    except Exception:  # pragma: no cover - Pillow is a hard dependency in practice
+        logger.info("Pillow unavailable; skipping image: %s", url)
+        return None
+    try:
+        img = Image.open(io.BytesIO(raw))  # lazy — reads headers only
+        if img.size[0] * img.size[1] > MAX_IMAGE_PIXELS:
+            logger.info("Image exceeds the pixel cap (%dx%d): %s", img.size[0], img.size[1], url)
+            return None
+        img = img.convert("RGB")
         img.thumbnail((MAX_DIMENSION, MAX_DIMENSION))
         quality = 85
         while True:
@@ -67,6 +104,9 @@ def fetch_image(url: str) -> Optional[ImageContent]:
         return ImageContent(
             type="image", data=base64.b64encode(data).decode("ascii"), mimeType="image/jpeg"
         )
+    except Image.DecompressionBombError:
+        logger.info("Decompression-bomb-class image rejected: %s", url)
+        return None
     except Exception:
         logger.info("Image re-encode failed: %s", url, exc_info=True)
         return None

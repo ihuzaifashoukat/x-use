@@ -38,9 +38,14 @@ class LLMService:
         if self.client is None:
             logger.info("LLM not configured; generate_text returning None.")
             return None
-        model = (call_params.pop("model_name", None)
-                 or call_params.pop("model", None)
-                 or self.default_model)
+        model_name = call_params.pop("model_name", None)
+        model_param = call_params.pop("model", None)
+        if model_name and model_param:
+            # Pop BOTH before resolving precedence: a short-circuit here used
+            # to leave 'model' in call_params, and the resulting TypeError was
+            # swallowed by the broad except below into a silent None.
+            raise ValueError("pass only one of model_name/model")
+        model = model_name or model_param or self.default_model
         call_params.setdefault("max_tokens", 1200)  # reasoning-model headroom
         built_messages = messages if messages is not None else (
             ([{"role": "system", "content": system_prompt}] if system_prompt else [])
@@ -95,6 +100,12 @@ class LLMService:
         is None. The first attempt uses the API's JSON mode; later attempts
         fall back to plain text (some OpenAI-compatible providers reject
         response_format)."""
+        if self.client is None:
+            # Not configured is not a provider outage: fail fast with an
+            # honest reason instead of looping through max_retries attempts
+            # that all end in a misleading "No response from LLM".
+            return None, "LLM not configured (no API key)"
+
         prompt = build_structured_json_prompt(
             task_instruction,
             schema,
@@ -118,7 +129,7 @@ class LLMService:
                 continue
 
             data, err = extract_json_from_response_text(text)
-            if data is not None:
+            if data is not None and isinstance(data, dict):
                 return data, None
             last_err = err or "Unknown parse error"
 

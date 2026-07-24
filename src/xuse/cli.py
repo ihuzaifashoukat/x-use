@@ -136,7 +136,14 @@ def skills_install(
 ):
     """Copy the bundled SKILL.md pack to ~/.claude/skills and ~/.agents/skills."""
     from xuse.skills_installer import install_skills
-    result = install_skills(force=force)
+    try:
+        result = install_skills(force=force)
+    except Exception as e:
+        # Partial/broken install (e.g. xuse.skills_pack absent): same
+        # remediation message as the empty-pack branch, never a traceback.
+        typer.secho(f"No bundled skills found (broken install?). ({e})",
+                    fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
     for path in result["installed"]:
         typer.echo(f"installed: {path}")
     for path in result["skipped"]:

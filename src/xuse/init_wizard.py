@@ -9,6 +9,7 @@ Writes (only after confirmation when a file already exists):
 Reads only; engine config is validated with the Pydantic models before writing.
 """
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -24,6 +25,10 @@ from xuse.doctor import check_cookie_data
 from xuse.models import AccountConfig
 
 PRESETS_DIR = PROJECT_ROOT / "presets"
+
+# Account ids are interpolated into cookie file paths; same charset rule as
+# the MCP layer (no dots, slashes, or backslashes — no traversal).
+_SAFE_ACCOUNT_ID = re.compile(r"[A-Za-z0-9_-]+")
 
 SETTINGS_PRESET_BLURBS = {
     "beginner-defaults.json": "simple defaults (Firefox, headless, no proxies)",
@@ -99,14 +104,28 @@ def _load_env(path: Path) -> Dict[str, str]:
 
 
 def _write_env(path: Path, updates: Dict[str, str]) -> None:
-    existing = _load_env(path)
-    existing.update(updates)
-    lines = [
-        "# x-use secrets — loaded at runtime; overrides the llm block in config/settings.json.",
-        "# This file is gitignored. Never commit it.",
-    ]
-    lines += [f"{k}={v}" for k, v in existing.items()]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    """Update only the keys we own; preserve every other line (comments,
+    blank lines, unrelated keys) of an existing .env. The header block is
+    only written when creating a new file."""
+    if path.is_file():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = [
+            "# x-use secrets — loaded at runtime; overrides the llm block in config/settings.json.",
+            "# This file is gitignored. Never commit it.",
+        ]
+    remaining = dict(updates)
+    out: List[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.partition("=")[0].strip()
+            if key in remaining:
+                out.append(f"{key}={remaining.pop(key)}")
+                continue
+        out.append(line)
+    out += [f"{k}={v}" for k, v in remaining.items()]
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +148,10 @@ def _settings_step() -> None:
 
 def _import_cookies(account_id: str) -> str:
     """Prompt for a cookie export, copy it under config/, return cookie_file_path."""
+    if not _SAFE_ACCOUNT_ID.fullmatch(account_id or ""):
+        # Defense in depth: the id lands in the destination path, so an id
+        # like "../evil" would write session secrets outside config/.
+        raise ValueError(f"Invalid account id {account_id!r}: use letters, digits, '_' or '-'.")
     cookie_rel = f"config/{account_id}_cookies.json"
     src = typer.prompt(
         "Path to exported x.com cookies JSON (leave empty to do it later)",
@@ -157,8 +180,14 @@ def _import_cookies(account_id: str) -> str:
         if not typer.confirm("Import it anyway?", default=False):
             return cookie_rel
     dest = CONFIG_DIR / f"{account_id}_cookies.json"
+    if src_path.resolve() == dest.resolve():
+        # The export already sits at the convention path — copying it onto
+        # itself raises SameFileError; use it in place instead.
+        typer.echo(f"Cookie export already at {dest} — using it in place.")
+        return cookie_rel
     if dest.exists() and not typer.confirm(f"{dest} already exists. Overwrite?", default=False):
         return cookie_rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(src_path, dest)
     typer.secho(f"Imported cookies to {dest}.", fg=typer.colors.GREEN)
     return cookie_rel
@@ -187,8 +216,16 @@ def _accounts_step() -> None:
             existing_id = str(accounts[0].get("account_id") or "")
             if existing_id and "your_" not in existing_id.lower():
                 default_id = existing_id
-        account_id = typer.prompt("Account id (handle or unique name)",
-                                  default=default_id or None).strip()
+        while True:
+            account_id = typer.prompt("Account id (handle or unique name)",
+                                      default=default_id or None).strip()
+            if _SAFE_ACCOUNT_ID.fullmatch(account_id):
+                break
+            typer.secho(
+                f"Invalid account id {account_id!r}: use letters, digits, '_' or '-' "
+                "(the id is used in the cookie file path).",
+                fg=typer.colors.RED)
+            default_id = ""
         cookie_rel = _import_cookies(account_id)
         if accounts:
             accounts[0]["account_id"] = account_id
@@ -202,6 +239,14 @@ def _accounts_step() -> None:
                 "target_keywords": [],
                 "competitor_profiles": [],
             }]
+
+    if not accounts:
+        # The user skipped the preset and declined to configure an account —
+        # the menu promised "configure later", so don't write an empty
+        # (doctor-FAILing) accounts.json.
+        typer.echo("No accounts configured — skipping accounts.json (copy "
+                   "presets/accounts/<preset>.json to config/accounts.json before running).")
+        return
 
     errors = _validate_accounts(accounts)
     if errors:

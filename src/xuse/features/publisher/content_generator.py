@@ -17,6 +17,37 @@ def _clamp(text: str, limit: int = MAX_TWEET_CHARS) -> str:
     # Soft trim at a boundary if possible (avoid mid-word punctuation)
     return trimmed.rstrip(" .,;:!\n")
 
+_PROMPT_STARTERS = ("write", "generate", "compose", "draft", "create", "craft")
+_PROMPT_PHRASES = (
+    "write an engaging",
+    "write a post",
+    "write a tweet",
+    "generate a post",
+    "generate a tweet",
+    "post about:",
+    "tweet about:",
+)
+
+
+def _looks_like_generation_prompt(text: str) -> bool:
+    """Decide whether `text` is an instruction to generate a post rather than
+    ready-to-publish text.
+
+    The old substring check ("generate"/"write"/"post" anywhere) sent ready
+    posts that merely mention those words ("my new blog post!") through the
+    LLM and rewrote them. Now a text counts as a prompt only when it STARTS
+    with an imperative generation verb ("Write an engaging X post about: …")
+    or contains an explicit instruction phrase.
+    """
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return False
+    first_word = lowered.split(None, 1)[0].strip(":,.!")
+    if first_word in _PROMPT_STARTERS:
+        return True
+    return any(phrase in lowered for phrase in _PROMPT_PHRASES)
+
+
 async def generate_post_text_if_needed(
     prompt_text: str,
     llm_settings: Optional[LLMSettings],
@@ -24,14 +55,15 @@ async def generate_post_text_if_needed(
 ) -> str:
     """Generate final post text if the provided text looks like a prompt.
 
-    Returns the original text if no generation is required.
+    Returns the original text if no generation is required. Returns "" when
+    generation was required but every attempt failed — the prompt itself is
+    never returned as post text, so callers must treat "" as a failure.
     """
     text = prompt_text
     if not llm_settings:
         return text
 
-    lowered = (prompt_text or "").lower()
-    if not any(k in lowered for k in ("generate", "write", "post")):
+    if not _looks_like_generation_prompt(prompt_text):
         return text
 
     logger.info("Attempting structured LLM generation for post content.")
@@ -63,7 +95,8 @@ async def generate_post_text_if_needed(
         service_preference=llm_settings.service_preference,
         model_name=llm_settings.model_name_override,
         max_tokens=llm_settings.max_tokens,
-        temperature=max(0.3, (llm_settings.temperature or 0.7)),
+        # `is not None` so an explicit temperature=0.0 survives to the provider.
+        temperature=llm_settings.temperature if llm_settings.temperature is not None else 0.7,
         hard_character_limit=MAX_TWEET_CHARS,
     )
     if data and isinstance(data, dict) and data.get("text"):
@@ -95,8 +128,8 @@ async def generate_post_text_if_needed(
         temperature=llm_settings.temperature,
     )
     if not generated_text:
-        logger.error("Failed to generate tweet text; using original text.")
-        return _clamp(prompt_text)
+        logger.error("LLM generation failed on every attempt; no usable post text.")
+        return ""  # never return the prompt itself as post text
     return _clamp(generated_text)
 
 

@@ -21,8 +21,8 @@ from xuse.core.config_loader import CONFIG_DIR, PROJECT_ROOT, ConfigLoader
 
 logger = logging.getLogger(__name__)
 
-try:  # Reuse the engine's placeholder rejection when importable.
-    from xuse.core.llm_service.clients import _is_api_key_valid
+try:  # Reuse the engine's key resolution/placeholder rejection when importable.
+    from xuse.core.llm_service.clients import _is_api_key_valid, _resolve_api_key
 except Exception:  # pragma: no cover - fallback for partial installs
     def _is_api_key_valid(key_name: str, key_value: Optional[str]) -> bool:
         if not key_value:
@@ -30,6 +30,14 @@ except Exception:  # pragma: no cover - fallback for partial installs
         if "YOUR_" in key_value.upper() and "_KEY" in key_value.upper():
             return False
         return True
+
+    def _resolve_api_key(key_name: str, config_value: Optional[str]) -> Tuple[Optional[str], str]:
+        env_value = os.environ.get("OPENAI_API_KEY")
+        if env_value and env_value.strip():
+            return env_value, "env var OPENAI_API_KEY"
+        if config_value and str(config_value).strip():
+            return str(config_value), "settings.json"
+        return None, "none"
 
 
 @dataclass
@@ -72,11 +80,17 @@ def check_cookie_data(data: Any) -> Tuple[bool, List[str]]:
         exp = cookie.get("expires") or cookie.get("expirationDate") or cookie.get("expiry")
         if exp:
             try:
-                if float(exp) < time.time():
-                    when = datetime.fromtimestamp(float(exp)).strftime("%Y-%m-%d")
-                    problems.append(f"'{required}' cookie expired on {when}")
+                exp_value = float(exp)
             except (TypeError, ValueError):
-                pass  # unparseable expiry — treated as a session cookie
+                exp_value = None  # unparseable expiry — treated as a session cookie
+            # exp_value <= 0 (puppeteer exports use -1, others 0) marks a
+            # session cookie: valid by definition, never an expiry problem.
+            if exp_value is not None and 0 < exp_value < time.time():
+                try:
+                    when = datetime.fromtimestamp(exp_value).strftime("%Y-%m-%d")
+                except (OSError, OverflowError, ValueError):
+                    when = "an unknown date"  # never let timestamp conversion crash the check
+                problems.append(f"'{required}' cookie expired on {when}")
     return (not problems), problems
 
 
@@ -194,20 +208,28 @@ def _check_cookies(accounts: List[Dict[str, Any]]) -> List[Check]:
 
 def _check_llm_keys(settings: Dict[str, Any]) -> List[Check]:
     """Single OpenAI-compatible client: a key is optional (interactive MCP
-    use is keyless), so a missing key is SKIP, never FAIL."""
+    use is keyless), so a missing key is SKIP, never FAIL.
+
+    Uses the same env-first resolution as build_client so doctor certifies
+    the key the runtime will actually use: a placeholder (e.g. the wizard's
+    YOUR_OPENAI_API_KEY default) that shadows a valid config key and disables
+    the client is a FAIL naming the effective source, not a false PASS."""
     llm_block = settings.get("llm", {}) or {}
     api_keys = settings.get("api_keys", {}) or {}
-    env_key = os.environ.get("OPENAI_API_KEY")
     config_key = llm_block.get("api_key") or api_keys.get("openai_api_key")
     base_url = os.environ.get("OPENAI_BASE_URL") or llm_block.get("base_url") or "api.openai.com"
     model = os.environ.get("OPENAI_MODEL") or llm_block.get("model") or "gpt-4o-mini"
-    if _is_api_key_valid("openai_api_key", env_key):
-        return [Check("llm", "PASS", f"model={model}, base_url={base_url}, key from env:OPENAI_API_KEY")]
-    if _is_api_key_valid("openai_api_key", config_key):
-        return [Check("llm", "PASS", f"model={model}, base_url={base_url}, key from config/settings.json")]
-    return [Check("llm", "SKIP",
-                  "no LLM key — only needed for \"auto\" text and background automation",
-                  "set OPENAI_API_KEY (+ OPENAI_BASE_URL/OPENAI_MODEL) in .env or the llm block in config/settings.json")]
+
+    key, source = _resolve_api_key("openai_api_key", config_key)
+    if key is None:
+        return [Check("llm", "SKIP",
+                      "no LLM key — only needed for \"auto\" text and background automation",
+                      "set OPENAI_API_KEY (+ OPENAI_BASE_URL/OPENAI_MODEL) in .env or the llm block in config/settings.json")]
+    if not _is_api_key_valid("openai_api_key", key):
+        return [Check("llm", "FAIL",
+                      f"key from {source} is a placeholder — the runtime LLM client is disabled",
+                      "replace the placeholder with a real key, or remove it from .env so a valid settings.json key can apply")]
+    return [Check("llm", "PASS", f"model={model}, base_url={base_url}, key from {source}")]
 
 
 def _redact_proxy(url: str) -> str:

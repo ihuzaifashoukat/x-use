@@ -21,8 +21,8 @@ class LLMSettings(BaseModel):
     # Completion cap. Reasoning models (e.g. kimi-k3) burn budget on hidden
     # reasoning tokens — the old 150 default starved replies to empty (live
     # finding, v2.3). It's a cap, not a target; non-reasoning models stop early.
-    max_tokens: int = 1200
-    temperature: Optional[float] = 0.7
+    max_tokens: int = Field(1200, ge=1)
+    temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0)
     # Add other common LLM parameters as needed
 
 class ActionConfig(BaseModel): # This can be global or per-account

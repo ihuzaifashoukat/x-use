@@ -49,15 +49,44 @@ _LEGACY_IGNORED_KEYS = (
 )
 
 
-def _is_api_key_valid(key_name: str, key_value: Optional[str]) -> bool:
-    if not key_value:
+# Placeholder markers: values containing these are template stubs, not keys.
+# Shared with doctor so a placeholder that disables the runtime client is
+# reported the same way on both sides.
+_PLACEHOLDER_MARKERS = (
+    "YOUR_",      # YOUR_OPENAI_API_KEY, YOUR_KEY_HERE, ...
+    "YOUR-",      # your-key, your-api-key, ...
+    "CHANGEME",
+    "CHANGE_ME",
+    "CHANGE-ME",
+    "REPLACE_ME",
+    "REPLACE-ME",
+    "PASTE_",
+    "INSERT_",
+)
+_PLACEHOLDER_EXACT = {"SK-...", "SK-XXX", "XXX", "TODO", "TBD"}
+
+
+def is_placeholder_key(key_name: str, key_value: Optional[str]) -> bool:
+    """True when key_value is present but is a template placeholder rather
+    than a real key (e.g. the wizard's YOUR_OPENAI_API_KEY default)."""
+    if key_value is None:
         return False
+    value = str(key_value).strip()
+    if not value:
+        return False
+    upper = value.upper()
     placeholder = API_KEY_PLACEHOLDERS.get(key_name)
-    if placeholder and key_value.strip().upper() == placeholder:
+    if placeholder and upper == placeholder:
+        return True
+    if upper in _PLACEHOLDER_EXACT:
+        return True
+    return any(marker in upper for marker in _PLACEHOLDER_MARKERS)
+
+
+def _is_api_key_valid(key_name: str, key_value: Optional[str]) -> bool:
+    if not key_value or not str(key_value).strip():
         return False
-    if "YOUR_" in key_value.upper() and "_KEY" in key_value.upper():
-        return False
-    return True
+    return not is_placeholder_key(key_name, key_value)
 
 
 def _resolve_api_key(key_name: str, config_value: Optional[str]) -> Tuple[Optional[str], str]:
