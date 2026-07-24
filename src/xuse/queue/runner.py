@@ -34,7 +34,9 @@ class DrainReport(BaseModel):
     executed: List[Dict[str, Any]] = Field(default_factory=list)
     succeeded: int = 0
     failed: int = 0
+    skipped: int = 0
     skipped_cap: int = 0
+    skipped_inactive: int = 0
     deferred: int = 0
     capped_actions: List[str] = Field(default_factory=list)
 
@@ -81,15 +83,27 @@ class QueueRunner:
             logger.info("Drain already in progress; refusing a concurrent drain.")
             return DrainReport(account=account_id, already_running=True)
         async with self._drain_lock:
-            budget = max(1, int(max_actions or self.config.max_actions_per_run))
+            # Explicit None check: max_actions=0 must clamp to a single
+            # action, not silently fall back to the configured default.
+            budget = max(1, int(
+                self.config.max_actions_per_run if max_actions is None else max_actions))
+            report = DrainReport(account=account_id)
             if account_id:
+                if self.account_filter is not None and not self.account_filter(account_id):
+                    # Paused means frozen, not condemned: an explicit drain on
+                    # an inactive account executes nothing and leaves every
+                    # item pending with its attempts untouched.
+                    report.skipped_inactive = len(
+                        self.store.list(account=account_id, status="pending"))
+                    logger.info("Drain of inactive account '%s' skipped (%d item(s) left pending).",
+                                account_id, report.skipped_inactive)
+                    return report
                 accounts = [account_id]
             else:
                 accounts = [
                     a for a in self.store.due_accounts(self.now_fn())
                     if self.account_filter is None or self.account_filter(a)
                 ]
-            report = DrainReport(account=account_id)
             for acc in accounts:
                 await self._drain_account(acc, budget, report)
             return report
@@ -123,9 +137,24 @@ class QueueRunner:
                 await self.sleep_fn(self.jitter_fn(
                     float(self.config.min_delay_seconds),
                     float(self.config.max_delay_seconds)))
+            # Re-validate after the pacing window: cancel_queued_action may
+            # have cancelled the item while we slept — never execute work
+            # whose status moved away from pending.
+            if self.store.get(item.queue_id).status != "pending":
+                report.skipped += 1
+                continue
             self.store.set_status(item.queue_id, "processing")
             try:
                 result = await self.executor(item)
+            except asyncio.CancelledError:
+                # Drain cancelled mid-execution (client disconnect, scheduler
+                # stop): un-zombie the item so a later drain in this process
+                # can retry it — the store's load-time processing→pending
+                # reset only covers restarts. The in-flight browser thread
+                # may still land the action (at-least-once); executor-side
+                # dedup is the guard against a duplicate on re-run.
+                self.store.set_status(item.queue_id, "pending")
+                raise
             except Exception as e:
                 # Sanitize BEFORE persisting/reporting: executor errors can
                 # carry proxy credentials (cold-start failures), and last_error

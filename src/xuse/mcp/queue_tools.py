@@ -111,7 +111,12 @@ def register_queue_tools(server, ctx: Ctx) -> None:
         if not final_text:
             raise ToolError("Post text must not be empty.")
         nb = _parse_not_before(not_before) if not_before else None
-        dedup_key = f"post_{account_id}_{hashlib.sha1(final_text.encode('utf-8')).hexdigest()[:12]}"
+        # Same text with different media or community is NOT the same post —
+        # the key must discriminate on the full payload. Keep this format
+        # byte-identical with exec_post in actions.py so the enqueue gate and
+        # the executor-side dedup agree.
+        key_material = (final_text or "") + "|" + str(media or []) + "|" + str(community)
+        dedup_key = f"post_{account_id}_{hashlib.sha1(key_material.encode('utf-8')).hexdigest()[:12]}"
         return _enqueue(ctx, account_id=account_id, action="post",
                         payload={"text": final_text, "media": list(media or []),
                                  "community": community},
@@ -191,6 +196,8 @@ def register_queue_tools(server, ctx: Ctx) -> None:
         by max_actions and its own daily caps)."""
         if ctx.queue_runner is None:
             raise ToolError("Queue runner is not configured on this server.")
+        if max_actions < 1:
+            raise ToolError(f"max_actions must be >= 1, got {max_actions}.")
         account_id = None
         if account is not None:
             account_id, _, _ = ex.resolve_account(ctx, account)
