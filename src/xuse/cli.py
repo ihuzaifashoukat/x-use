@@ -123,5 +123,40 @@ def doctor():
     raise typer.Exit(run_checks())
 
 
+skills_app = typer.Typer(
+    help="Manage the bundled agent skills (Claude Code, Codex).",
+    no_args_is_help=True,
+)
+app.add_typer(skills_app, name="skills")
+
+
+@skills_app.command("install")
+def skills_install(
+    force: bool = typer.Option(False, "--force", help="Overwrite existing skills."),
+):
+    """Copy the bundled SKILL.md pack to ~/.claude/skills and ~/.agents/skills."""
+    from xuse.skills_installer import install_skills
+    result = install_skills(force=force)
+    for path in result["installed"]:
+        typer.echo(f"installed: {path}")
+    for path in result["skipped"]:
+        typer.echo(f"skipped (exists — use --force): {path}")
+    if not result["installed"] and not result["skipped"]:
+        typer.secho("No bundled skills found (broken install?).",
+                    fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
+
+
+@skills_app.command("list")
+def skills_list():
+    """Show which bundled skills are installed in each client dir."""
+    from xuse.skills_installer import SKILL_TARGETS, list_skills
+    for name, targets in list_skills().items():
+        marks = "  ".join(f"{t}: {'yes' if present else 'no'}"
+                           for t, present in targets.items())
+        typer.echo(f"{name}: {marks}")
+    typer.echo(f"(targets: {', '.join(SKILL_TARGETS)})")
+
+
 if __name__ == "__main__":
     app()

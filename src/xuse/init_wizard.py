@@ -262,6 +262,15 @@ def run_wizard() -> None:
     except typer.Abort:
         typer.echo("\nAborted — no further changes made.")
         raise typer.Exit(1)
+    try:
+        from xuse.skills_installer import install_skills
+        result = install_skills()
+        if result["installed"]:
+            typer.echo(f"\nAgent skills installed ({len(result['installed'])} files) "
+                       "for Claude Code and Codex.")
+    except Exception:
+        typer.secho("Skill install failed (non-fatal) — run 'x-use skills install' later.",
+                    fg=typer.colors.YELLOW)
     typer.echo("\nDone. Next steps:")
     typer.echo("  1. x-use doctor   # verify browser, cookies, keys, proxies")
     typer.echo("  2. x-use run      # start the automation")
