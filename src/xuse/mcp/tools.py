@@ -163,9 +163,11 @@ def register_tools(server, ctx: Ctx) -> None:
     from .accounts_tools import register_account_tools
     from .engage import register_engage_tool
     from .queue_tools import register_queue_tools
+    from .support_tools import register_support_tools
     from .write_tools import register_write_tools
 
     register_write_tools(server, ctx)
     register_engage_tool(server, ctx)
     register_queue_tools(server, ctx)
     register_account_tools(server, ctx)
+    register_support_tools(server, ctx)

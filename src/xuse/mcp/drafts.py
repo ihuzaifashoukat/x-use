@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-DraftStatus = Literal["pending", "approved", "executed", "failed"]
+DraftStatus = Literal["pending", "approved", "executed", "failed", "rejected"]
 
 
 class Draft(BaseModel):
