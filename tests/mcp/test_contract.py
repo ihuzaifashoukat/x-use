@@ -39,11 +39,18 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "reply_to_tweet": {"params": {"account", "tweet_url", "text"}, "required": {"account", "tweet_url"}},
     "engage": {"params": {"account", "keywords", "actions", "max_actions"}, "required": {"account", "keywords"}},
     "run_cycle": {"params": {"account", "pipelines"}, "required": set()},
+    "queue_post": {"params": {"account", "text", "topic", "media", "community", "not_before"},
+                   "required": {"account"}},
+    "queue_engagement": {"params": {"account", "action", "tweet_url", "text"},
+                         "required": {"account", "action", "tweet_url"}},
+    "list_queue": {"params": {"account", "status"}, "required": set()},
+    "cancel_queued_action": {"params": {"queue_id"}, "required": {"queue_id"}},
+    "process_queue": {"params": {"account", "max_actions"}, "required": set()},
 }
 
 
 @pytest.mark.asyncio
-async def test_server_registers_exactly_the_nine_documented_tools(mcp_server):
+async def test_server_registers_exactly_the_documented_tools(mcp_server):
     tools = await mcp_server.list_tools()
     assert {t.name for t in tools} == set(EXPECTED_TOOLS)
 
