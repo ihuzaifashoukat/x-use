@@ -49,8 +49,11 @@ The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip 
 - [x] README relaunch: hero, 3-step quick start (one-line installer → `x-use init` → paste the MCP snippet into your client config), comparison with API-based alternatives, demo GIF
 - [x] Public `ARCHITECTURE.md` and `docs/BEST_PRACTICES.md` (including a responsible-use section)
 - [x] Official MCP Registry wiring: `server.json` at the repo root plus the `mcp-name` ownership marker in the README, published automatically by the `mcp-registry` job in `publish.yml` (GitHub OIDC, no secret, version taken from the release tag)
-- [ ] First registry publish, lands with the next release. PyPI descriptions are immutable per version and 2.3.0 shipped before the marker existed, so verification needs 2.3.1 or later
-- [ ] Submit to the community directories (Smithery, LobeHub, mcp.so, PulseMCP, a PR to `punkpeye/awesome-mcp-servers`). Glama auto-indexes public repos, so that listing only needs claiming
+- [x] First registry publish, shipped with v2.3.1. The record is live under `io.github.ihuzaifashoukat/x-use`, and every future release republishes it automatically
+- [x] PulseMCP, no submission needed. It ingests the official registry daily and processes weekly, so the listing follows from the registry publish above
+- [ ] Community directories, submitted and waiting on review: [punkpeye/awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers/pull/10914) (PR), [mcp.so](https://github.com/chatmcp/mcpso/issues/3301) (issue), [LobeHub](https://github.com/lobehub/lobehub/issues/17601) (issue)
+- [ ] Glama, submit through the form at `glama.ai/mcp/servers/add`. It has not auto-indexed the repo, and the form needs a signed-in account
+- [ ] Smithery is deploy-only now: every listing runs in their cloud. x-use drives Chrome on your own machine with your own cookies, so a hosted deployment is the wrong shape for it. Parked unless local listings come back
 
 ### Compatibility
 
