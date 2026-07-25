@@ -1,98 +1,199 @@
 ---
 name: x-use
-description: Overview and routing for the x-use X (Twitter) automation MCP server, covering tool groups, the two safety gates, and usage conventions. Use whenever you work with x-use tools or the user mentions their X/Twitter account automation.
+description: Install, register, and configure x-use, the browser-native MCP server for X (Twitter) automation that needs no X API key. Covers pip install, MCP client registration for Claude Desktop, Claude Code, Codex, Cursor and Windsurf, cookie-based account setup, keywords, and persona. Use when the user wants to set up x-use, add an X account, connect X or Twitter automation to their agent, or when x-use tools are unavailable or unconfigured.
 ---
 
-# x-use
+# Set up x-use
 
-x-use is an MCP server that drives a real, logged-in browser on X (Twitter):
-post, reply, search, like, retweet, schedule, and manage multiple accounts.
-It needs no X API key. Interactive use needs no LLM key either. YOU are the
-writer; the server drives the browser.
+x-use is an MCP server that automates X (Twitter) through a real logged-in
+Chrome session instead of the paid X API. This skill takes a machine from
+nothing to a configured, working account.
 
-## The two safety gates (never bypass them)
+Read this first: **the steps split at the client restart.** Everything before it
+is shell work, because x-use's MCP tools do not exist yet. Everything after it is
+tool work. Do not try to call `add_account` before step 4 has completed.
 
-1. **Draft gate.** Write tools (`post_tweet`, `reply_to_tweet`,
-   `generate_and_post`, `engage`) return a *draft* by default and change
-   nothing on X. Present the draft to the user; only `approve_draft(draft_id)`
-   executes it, and only when the user explicitly says to approve.
-   `run_cycle` is the legacy batch path: it executes immediately and is not
-   draft-gated.
-2. **Queue gate.** `queue_post` / `queue_engagement` only store work. Nothing
-   runs until an explicit `process_queue` call (daily caps apply).
+Explain each step in one line as you go, and confirm before anything that changes
+the user's system.
 
-## Tool groups (33 tools)
+## 1. Check the prerequisites
 
-- **Read-only:** `list_accounts`, `get_account`, `get_metrics`,
-  `search_tweets`, `search_profile`, `get_tweet`, `prepare_reply`, `list_queue`, `list_drafts`,
-  `get_draft`, `reject_draft`, `get_run_status`, `get_account_health`,
-  `list_proxies`
-- **Write (draft-gated):** `post_tweet`, `generate_and_post`,
-  `reply_to_tweet`, `engage`, `run_cycle`, `approve_draft`
-- **Queue:** `queue_post`, `queue_engagement`, `cancel_queued_action`,
-  `process_queue`
-- **Composite (need the server's `llm` block):** `research_and_stage`,
-  `draft_post_variations`. Prefer doing this work yourself with the
-  read-only tools when the user has no LLM key configured
-- **Accounts:** `add_account`, `update_account`, `set_account_active`,
-  `remove_account` (mutate config; validated + backed up)
-- **Proxies:** `add_proxy`, `remove_proxy`, `test_proxy` (plus
-  `list_proxies` above)
+Python 3.10 or newer, and Google Chrome. Check both:
 
-## Beyond tools
+```bash
+python --version
+```
 
-The server also exposes two non-tool surfaces, both read-only to obtain:
+If either is missing, say so and stop. There is no workaround: x-use drives a
+real Chrome window, and that is the whole design.
 
-- **Resources** (context to attach, no browser, no turn spent):
-  `xuse://accounts`, `xuse://accounts/{account_id}`,
-  `xuse://accounts/{account_id}/persona`, `xuse://drafts/pending`.
-  Attach the persona before writing anything as an account.
-- **Prompts** (the same workflows as these skills, for clients without skill
-  support): `research_niche`, `draft_replies`, `review_and_publish`,
-  `daily_check`, `setup_account`.
-
-## Conventions
-
-- **You write the text.** Always prefer explicit `text` over `"auto"`. Call
-  `prepare_reply(account, tweet_url)` first: you get the tweet's text AND its
-  images (as image content, look at them), the account's keywords, and its
-  persona. Follow the persona when composing.
-- **Small batches.** Keep `max_actions` / `limit` small (<= 5) unless the
-  user asks for more. X rate-limits aggressively; the server's pacing and
-  caps exist to protect the account.
-- **Drafts are the default review loop.** Stage work, show the user
-  `list_drafts`, and let them pick. `reject_draft` what they dislike.
-- **Paused accounts** (`is_active=false`) can be read but never written to.
-- Every response is a JSON envelope: `{"ok": true, ...}` or
-  `{"ok": false, "error": {"type", "message"}}`. On error, explain and stop.
-
-## Workflow skills
-
-- Setting up or adding an account → use **x-use-setup**
-- Researching and replying in the user's niche → **x-use-engage**
-- Creating and staging original content → **x-use-content**
-- Daily review: metrics, drafts, queue → **x-use-review**
-
-## Getting the workflow skills
-
-This file is the router. The four workflow skills it points at ship inside the
-package:
+## 2. Install
 
 ```bash
 pip install x-use-mcp
+```
+
+This provides the `x-use` command. If the user is working inside a clone of the
+repository instead, `pip install -e .` from the repo root does the same thing.
+
+Then verify:
+
+```bash
+x-use doctor
+```
+
+`doctor` prints one PASS, FAIL, or SKIP line per check: config files, browser
+binary, driver, per-account cookies, LLM key, proxies. On a fresh machine the
+cookie and config checks are expected to fail, since nothing is configured yet.
+Do not treat that as a broken install. A FAIL on the browser or driver line is
+the one that actually blocks progress.
+
+If `x-use` is not found after installing, it is a PATH problem, not a failed
+install. `pip show -f x-use-mcp` locates the console script; use its full path
+everywhere below, for example `venv/bin/x-use` or `venv\Scripts\x-use.exe`.
+
+## 3. Install the workflow skills
+
+```bash
 x-use skills install
 ```
 
-That writes them to `~/.claude/skills/` and `~/.agents/skills/`, so Claude Code
-and Codex-style agents both pick them up. Claude Code users can install the
-plugin from this repository's marketplace instead.
+This writes five skills to `~/.claude/skills/` and `~/.agents/skills/`, so Claude
+Code and Codex-style agents both pick them up. They cover engagement, content,
+daily review, and account setup. `--force` overwrites existing copies, and
+`x-use skills list` shows what landed.
 
-The server also exposes the same workflows as MCP **prompts** (`research_niche`,
-`draft_replies`, `review_and_publish`, `daily_check`, `setup_account`), which
-need no installation and work in any MCP client, and read-only **resources**
-(`xuse://accounts`, `xuse://accounts/{account_id}/persona`,
-`xuse://drafts/pending`) for context you want attached rather than fetched.
+## 4. Register the MCP server, then restart the client
 
-Working from a clone? The canonical skill sources live in
-`src/xuse/skills_pack/<name>/SKILL.md`. Edit those, then run
-`python scripts/sync_skills.py`; this file is generated from them.
+Work out which client you are running inside and register x-use in that one. The
+config is identical everywhere: command `x-use`, args `["mcp"]`.
+
+- **Claude Code:**
+
+  ```bash
+  claude mcp add x-use -- x-use mcp
+  ```
+
+- **Claude Desktop** (`claude_desktop_config.json`), **Cursor**, **Windsurf**,
+  and any other client taking JSON:
+
+  ```json
+  {
+    "mcpServers": {
+      "x-use": {
+        "command": "x-use",
+        "args": ["mcp"]
+      }
+    }
+  }
+  ```
+
+- **Codex** (`~/.codex/config.toml`):
+
+  ```toml
+  [mcp_servers.x-use]
+  command = "x-use"
+  args = ["mcp"]
+  ```
+
+**Now tell the user to restart the client, and stop.** A stdio MCP server is
+loaded at client startup, so nothing you do will make the tools appear in the
+current session. When they come back, confirm the connection with
+`list_accounts`. An empty list is the correct answer at this point.
+
+## 5. Add the account
+
+Everything from here is MCP tool calls.
+
+Ask for a short account id, something like `main` or `brand`. It is an internal
+label, not the X handle.
+
+Then walk the user through the cookie export, which is how x-use authenticates:
+
+1. Install a cookie-export browser extension, for example Cookie-Editor.
+2. Log into x.com in that browser.
+3. Open the extension while on x.com and export as JSON.
+4. Save the file on this machine and give you the **path**.
+
+```
+add_account(account_id="main", cookie_file="/path/to/cookies.json")
+```
+
+The file is validated and copied server-side. **Never ask the user to paste
+cookie contents into the conversation.** The path-only design exists precisely so
+the values never cross the wire, and pasting them defeats it.
+
+Verify with `get_account_health("main")`. Cookie status should be valid. If it is
+not, the export is stale or from the wrong domain, so have them redo it while
+actually logged in.
+
+## 6. Configure the account
+
+Ask what niche they are in, which keywords to watch, which profiles they want to
+engage with, and their actual X handle.
+
+```
+update_account(
+  account="main",
+  target_keywords=["..."],
+  competitor_profiles=["https://x.com/..."],
+  self_handles=["theirhandle"],
+)
+```
+
+`self_handles` matters more than it looks. Without it the own-post guard cannot
+fire, and nothing can later find the posts this account published, because
+`approve_draft` returns no URL.
+
+## 7. Set the persona
+
+Ask how they want to sound. The repo ships three starting points under
+`presets/personas/` (builder, founder, curator), so offer them or write one
+together. Cover voice, topics, reply style, what to avoid, and one or two example
+replies. Under 4000 characters, markdown.
+
+```
+update_account(account="main", persona="...")
+```
+
+Batch the config edits where you can. Every `update_account` closes the warm
+browser session, so the next action pays a cold start.
+
+## 8. Optional, only if it applies
+
+- **More accounts:** repeat from step 5. If they want separate network routes,
+  `add_proxy(pool, proxy_url)` then
+  `update_account(account, proxy="pool:<name>")`.
+- **An LLM key:** interactive use needs none. You are the writer, and the server
+  drives the browser. A key is only needed for unattended background automation
+  and `"auto"` text, set under `llm` in `config/settings.json`.
+
+## 9. Prove it works
+
+Stage one real but harmless draft, a reply or a post, and show it with
+`list_drafts`.
+
+Then tell the user plainly: **write tools return a draft and change nothing on X.
+Only `approve_draft(draft_id)` publishes.** That gate is on by default and it is
+the reason this is safe to hand to an agent.
+
+## When something fails
+
+Run `x-use doctor`, read the actual error, fix that cause, and only then
+continue. Every tool returns `{"ok": true, ...}` or
+`{"ok": false, "error": {"type", "message"}}`. On an error envelope, explain it
+and stop rather than retrying in a loop.
+
+## After setup
+
+The installed skills take over: **x-use-engage** for research and replies,
+**x-use-content** for original posts, **x-use-review** for the daily digest, and
+**x-use** for tool routing and conventions.
+
+Clients without skill support get the same workflows as MCP prompts
+(`research_niche`, `draft_replies`, `review_and_publish`, `daily_check`,
+`setup_account`), plus read-only resources (`xuse://accounts`,
+`xuse://accounts/{account_id}/persona`, `xuse://drafts/pending`) for context
+worth attaching rather than fetching.
+
+Full tool reference: [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md).

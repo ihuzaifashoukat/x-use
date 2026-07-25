@@ -52,6 +52,21 @@ pip install -e .
 
 Requires Python 3.10+ and Chrome. Any of these gives you the `x-use` command.
 
+## Automatic setup
+
+Point any capable agent at this repository and it can install and configure x-use
+itself. [`SKILL.md`](SKILL.md) at the root is the install-and-configure skill: it
+covers prerequisites, `pip install`, MCP client registration for Claude Desktop,
+Claude Code, Codex, Cursor, and Windsurf, the client restart, cookie-based
+account setup, keywords, and persona.
+
+```bash
+npx skills add ihuzaifashoukat/x-use
+```
+
+Or paste the one-shot prompt in [docs/SETUP_PROMPT.md](docs/SETUP_PROMPT.md) into
+your client. Prefer to drive it yourself? Keep reading.
+
 ## Set up
 
 ```bash
