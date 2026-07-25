@@ -1,6 +1,6 @@
 ---
 name: x-use
-description: Overview and routing for the x-use X (Twitter) automation MCP server: tool groups, the two safety gates, and usage conventions. Use whenever you work with x-use tools or the user mentions their X/Twitter account automation.
+description: Overview and routing for the x-use X (Twitter) automation MCP server, covering tool groups, the two safety gates, and usage conventions. Use whenever you work with x-use tools or the user mentions their X/Twitter account automation.
 ---
 
 # x-use

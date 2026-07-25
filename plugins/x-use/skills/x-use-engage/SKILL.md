@@ -1,6 +1,6 @@
 ---
 name: x-use-engage
-description: Research the user's niche on X and draft persona-voice replies for review: search keywords or profiles, read tweets AND their images, compose replies, stage drafts. Use when the user wants to engage, reply, grow reach, or "find posts worth replying to".
+description: Research the user's niche on X and draft persona-voice replies for review, searching keywords or profiles, reading tweets AND their images, composing replies, and staging drafts. Use when the user wants to engage, reply, grow reach, or "find posts worth replying to".
 ---
 
 # x-use engage

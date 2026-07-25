@@ -8,6 +8,27 @@ project follows [semantic versioning](https://semver.org/). See
 
 ---
 
+## [2.4.1], 2026-07-25
+
+### Fixed
+
+- **Every shipped `SKILL.md` had invalid YAML frontmatter.** 2.4.0 removed em
+  dashes from the skills pack and replaced several with colons, which landed
+  inside unquoted `description` values. A colon followed by a space makes YAML
+  read the rest of the line as a nested mapping, so all eleven files failed to
+  parse with "mapping values are not allowed in this context" and no skill
+  consumer could load them.
+
+  The descriptions are rewritten to carry no colon at all.
+  `tests/test_skills_pack.py` now parses the frontmatter as real YAML instead of
+  matching line prefixes, which is why the original slipped through, and also
+  checks the Agent Skills spec limits (name charset and length, description
+  length, no XML tags, name matches its directory). The em-dash rule is pinned
+  in the same file so fixing one cannot break the other again. Adds `pyyaml` as
+  a dev dependency.
+
+---
+
 ## [2.4.0], 2026-07-25
 
 ### Fixed
@@ -303,6 +324,7 @@ CLI.
 
 - `python src/main.py` still works, with a warning pointing to `x-use run`.
 
+[2.4.1]: https://github.com/ihuzaifashoukat/x-use/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/ihuzaifashoukat/x-use/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.2.0...v2.3.0

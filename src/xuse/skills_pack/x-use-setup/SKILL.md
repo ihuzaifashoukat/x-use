@@ -1,6 +1,6 @@
 ---
 name: x-use-setup
-description: Zero-knowledge onboarding for x-use: verify the install, register the MCP server, then interview the user to configure their first X account (cookies, niche, keywords, persona). Use when x-use is not yet configured, when adding an account, or when the user asks to get started.
+description: Zero-knowledge onboarding for x-use that verifies the install, registers the MCP server, then interviews the user to configure their first X account (cookies, niche, keywords, persona). Use when x-use is not yet configured, when adding an account, or when the user asks to get started.
 ---
 
 # x-use setup

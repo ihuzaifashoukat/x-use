@@ -1,6 +1,6 @@
 ---
 name: x-use-content
-description: Create original X content in the user's persona: research what works in the niche, draft posts, stage and polish them one by one for review. Use when the user wants post ideas, content creation, or a posting pipeline.
+description: Create original X content in the user's persona by researching what works in the niche, drafting posts, and staging them one by one for review. Use when the user wants post ideas, content creation, or a posting pipeline.
 ---
 
 # x-use content

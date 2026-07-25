@@ -1,6 +1,6 @@
 ---
 name: x-use-review
-description: Daily digest for an x-use account: health, metrics, pending drafts and queued work in one pass, then approve/reject/process per the user's direction. Use for "how is my account doing", daily check-ins, or before any batch of approvals.
+description: Daily digest for an x-use account covering health, metrics, pending drafts, and queued work in one pass, then approve/reject/process per the user's direction. Use for "how is my account doing", daily check-ins, or before any batch of approvals.
 ---
 
 # x-use review
