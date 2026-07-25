@@ -8,10 +8,12 @@ response passes through the mask_account filter.
 """
 import json
 import logging
+import os
 import re
 import shutil
+import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from xuse.core.config_loader import CONFIG_DIR, PROJECT_ROOT
 from xuse.core.config_writer import AccountsConfigWriter, ConfigWriteError
@@ -55,9 +57,21 @@ def _cookie_status(raw: Dict[str, Any]) -> Dict[str, Any]:
             "cookie_file_exists": path.is_file()}
 
 
-def _import_cookies(account_id: str, cookie_file: str) -> Tuple[str, Optional[Path]]:
+class _CookieRollback(NamedTuple):
+    """How to undo a cookie import whose config mutation then failed.
+
+    ``backup`` is a copy of whatever ``dest`` held BEFORE the import. It is
+    None only when ``dest`` did not previously exist — i.e. when the import
+    genuinely created a new file and rolling back means deleting it.
+    """
+
+    dest: Path
+    backup: Optional[Path]
+
+
+def _import_cookies(account_id: str, cookie_file: str) -> Tuple[str, Optional[_CookieRollback]]:
     """Validate and copy a cookie export to config/<account_id>_cookies.json.
-    Returns (repo-relative cookie_file_path, copied dest path) — the dest is
+    Returns (repo-relative cookie_file_path, rollback token) — the token is
     None when the export already sat at the convention path and was used in
     place, so callers can roll back exactly the copies they made."""
     src = Path(cookie_file).expanduser()
@@ -78,24 +92,55 @@ def _import_cookies(account_id: str, cookie_file: str) -> Tuple[str, Optional[Pa
         logger.info("Cookie file for account '%s' already at %s; using in place.", account_id, dest)
         return f"config/{account_id}_cookies.json", None
     dest.parent.mkdir(parents=True, exist_ok=True)
+    backup: Optional[Path] = None
+    if dest.exists():
+        # dest is this account's LIVE cookie file and copyfile is about to
+        # clobber it. If the config mutation then fails, rolling back by
+        # deleting dest would destroy a working login that is not backed up
+        # anywhere, so stash the current contents first and restore them.
+        fd, tmp_name = tempfile.mkstemp(dir=str(dest.parent),
+                                        prefix=f".{account_id}_cookies-",
+                                        suffix=".bak")
+        os.close(fd)
+        backup = Path(tmp_name)
+        shutil.copy2(dest, backup)
     shutil.copyfile(src, dest)
     logger.info("Imported cookies for account '%s' to %s.", account_id, dest)
-    return f"config/{account_id}_cookies.json", dest
+    return f"config/{account_id}_cookies.json", _CookieRollback(dest, backup)
 
 
-def _discard_cookie_copy(copied: Optional[Path], account_id: str) -> None:
-    """Roll back a cookie copy whose config mutation then failed — never
-    leave an orphan file (for add_account, one belonging to an account that
-    does not exist). Best-effort: the mutation error takes precedence."""
-    if copied is None:
+def _discard_cookie_copy(rollback: Optional[_CookieRollback], account_id: str) -> None:
+    """Roll back a cookie import whose config mutation then failed.
+
+    Restores the account's previous cookie file when the import overwrote one,
+    and deletes the copy only when the import created a brand-new file (for
+    add_account, one belonging to an account that does not exist). Best-effort:
+    the mutation error takes precedence."""
+    if rollback is None:
         return
     try:
-        copied.unlink()
-        logger.info("Discarded cookie copy %s after failed mutation for '%s'.",
-                    copied, account_id)
+        if rollback.backup is not None:
+            os.replace(rollback.backup, rollback.dest)
+            logger.info("Restored the previous cookie file for '%s' after a failed mutation.",
+                        account_id)
+        else:
+            rollback.dest.unlink()
+            logger.info("Discarded cookie copy %s after failed mutation for '%s'.",
+                        rollback.dest, account_id)
     except OSError:
-        logger.warning("Could not discard cookie copy %s after failed mutation.",
-                       copied)
+        logger.warning("Could not roll back the cookie import at %s after a failed mutation.",
+                       rollback.dest)
+
+
+def _commit_cookie_copy(rollback: Optional[_CookieRollback]) -> None:
+    """Drop the pre-import backup once the config mutation has succeeded, so
+    the stashed copies do not accumulate in config/."""
+    if rollback is None or rollback.backup is None:
+        return
+    try:
+        rollback.backup.unlink()
+    except OSError:
+        logger.warning("Could not remove the cookie backup %s.", rollback.backup)
 
 
 def register_account_tools(server, ctx: Ctx) -> None:
@@ -130,7 +175,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
             if isinstance(raw, dict) and raw.get("account_id") == account_id:
                 raise ToolError(f"Account '{account_id}' already exists.")
         cookie_rel: Optional[str] = None
-        cookie_copied: Optional[Path] = None
+        cookie_copied: Optional[_CookieRollback] = None
         if cookie_file:
             cookie_rel, cookie_copied = _import_cookies(account_id, cookie_file)
         entry: Dict[str, Any] = {
@@ -149,6 +194,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
         except ConfigWriteError as e:
             _discard_cookie_copy(cookie_copied, account_id)
             raise ToolError(str(e)) from e
+        _commit_cookie_copy(cookie_copied)
         _refresh(ctx, updated)
         return ok_(account=ex.mask_account(entry),
                    message=f"Account '{account_id}' added. Previous accounts.json "
@@ -172,7 +218,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
         the new config."""
         _known_account(ctx, account)
         cookie_rel: Optional[str] = None
-        cookie_copied: Optional[Path] = None
+        cookie_copied: Optional[_CookieRollback] = None
         if cookie_file:
             cookie_rel, cookie_copied = _import_cookies(account, cookie_file)
 
@@ -209,6 +255,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
         except ConfigWriteError as e:
             _discard_cookie_copy(cookie_copied, account)
             raise ToolError(str(e)) from e
+        _commit_cookie_copy(cookie_copied)
         _refresh(ctx, updated)
         await ctx.session_pool.close(account)
         return ok_(account=ex.mask_account(_known_account(ctx, account)),

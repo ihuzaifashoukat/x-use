@@ -4,6 +4,8 @@ import re
 from typing import Optional, Dict, Any, List
 from urllib.parse import urlparse
 
+from xuse.utils.sanitize import mask_url_userinfo
+
 try:
     from ..core.config_loader import ConfigLoader, PROJECT_ROOT
 except ImportError:
@@ -14,14 +16,16 @@ except ImportError:
 
 
 VALID_PROXY_SCHEMES = ("http", "https", "socks4", "socks5")
-_USERINFO_RE = re.compile(r"(://)[^@/\s]+@")
 
 
 def mask_proxy_url(url: Optional[str]) -> Optional[str]:
-    """Mask the whole userinfo: http://user:pass@host:port -> http://***@host:port."""
-    if not url:
-        return url
-    return _USERINFO_RE.sub(r"\1***@", str(url))
+    """Mask the whole userinfo: http://user:pass@host:port -> http://***@host:port.
+
+    Delegates to the single implementation in xuse.utils.sanitize — this used to
+    be a third copy of the same regex, which is how the '/'-in-password leak
+    survived a fix applied elsewhere.
+    """
+    return mask_url_userinfo(url)
 
 
 def validate_proxy_url(url: str) -> str:

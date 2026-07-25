@@ -23,6 +23,7 @@ from xuse.core.config_loader import PROJECT_ROOT
 from xuse.core.settings_writer import SettingsConfigWriter, SettingsWriteError
 from xuse.utils.proxy_manager import ProxyManager
 from xuse.utils.proxy_manager import validate_proxy_url as _validate_proxy_url
+from xuse.utils.sanitize import mask_url_userinfo
 
 from . import executor as ex
 from .executor import Ctx, ToolError
@@ -31,15 +32,15 @@ from .tools import guard, ok_
 logger = logging.getLogger(__name__)
 
 _VALID_SCHEMES = ("http", "https", "socks4", "socks5")
-_USERINFO_RE = re.compile(r"(://)[^@/\s]+@")
 IP_ECHO_URL = "https://api.ipify.org?format=json"
 
 
 def mask_proxy(url: Optional[str]) -> Optional[str]:
-    """Mask the whole userinfo: http://user:pass@host:port -> http://***@host:port."""
-    if not url:
-        return url
-    return _USERINFO_RE.sub(r"\1***@", str(url))
+    """Mask the whole userinfo: http://user:pass@host:port -> http://***@host:port.
+
+    Delegates to the single implementation in xuse.utils.sanitize.
+    """
+    return mask_url_userinfo(url)
 
 
 def validate_proxy_url(url: str) -> str:
