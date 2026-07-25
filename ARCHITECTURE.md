@@ -2,7 +2,7 @@
 
 This document describes the architecture of **x-use** (formerly `twitter-automation-ai`): browser-native AI agents for X (Twitter), multi-account, MCP-ready, no API keys required.
 
-Sections 1–5 describe the engine as it exists today, packaged under `src/xuse/` since v2.0. Section 6 describes the v2.0 packaging, CLI, and MCP layer, which shipped with the rebrand; section 6.3 covers what is still planned.
+Sections 1 to 5 describe the engine as it exists today, packaged under `src/xuse/` since v2.0. Section 6 describes the v2.0 packaging, CLI, and MCP layer, which shipped with the rebrand; section 6.3 covers what is still planned.
 
 ## 1. Overview
 
@@ -130,7 +130,7 @@ One run of `python src/main.py` executes the following per active account (see `
 
 ## 6. v2.0 Packaging, CLI, and MCP Layer (Shipped)
 
-v2.0 shipped the packaging, CLI, and MCP layer described here; the engine from sections 1–5 is behaviorally unchanged and now lives in the installable `src/xuse/` package.
+v2.0 shipped the packaging, CLI, and MCP layer described here; the engine from sections 1 to 5 is behaviorally unchanged and now lives in the installable `src/xuse/` package.
 
 ### 6.1 Package and CLI (shipped in v2.0)
 

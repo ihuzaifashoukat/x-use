@@ -17,8 +17,6 @@ The X API's pricing tiers put write access out of reach for exactly the people w
 [![Forks](https://img.shields.io/github/forks/ihuzaifashoukat/x-use)](https://github.com/ihuzaifashoukat/x-use/network/members)
 [![Stars](https://img.shields.io/github/stars/ihuzaifashoukat/x-use)](https://github.com/ihuzaifashoukat/x-use/stargazers)
 
-<!-- DEMO GIF PLACEHOLDER: record `x-use init`, paste the MCP snippet, make a draft, approve it, then embed the GIF here. -->
-
 ---
 
 ## Install
@@ -113,7 +111,7 @@ x-use mcp                             # start the MCP stdio server
 
 Pipelines for `--pipeline`: `community_engagement`, `competitor_reposts`, `content_curation`, `keyword_replies`, `keyword_retweets`, `likes`. The MCP `run_cycle` tool accepts the same names.
 
-The legacy `python src/main.py` entry point still works via a deprecation shim (removal no earlier than v2.1).
+The legacy `python src/main.py` entry point still works via a deprecation shim. It is scheduled for removal in v3.0; the whole v2 series keeps it.
 
 ## Features
 
@@ -158,6 +156,32 @@ Multi-account automation needs quality residential proxies, X's per-IP detection
 
 Browser automation of X carries real account risk. Read [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md) before running anything: it covers conservative rate limits (the shipped defaults), account warm-up, relevance filters, cookie and credential hygiene, and X ToS considerations. Keep delays high, caps low, and draft mode on.
 
+## FAQ
+
+### Does x-use need an X (Twitter) API key?
+
+No. x-use drives a real Chrome session authenticated with cookies you export from your own browser, so it never calls the X API and costs $0 in API fees. An LLM key is optional too: interactive MCP use is keyless, because your AI client writes the text and passes it to the tools.
+
+### Which MCP clients work with x-use?
+
+Any client that can run a stdio MCP server. Claude Desktop, Claude Code, Cursor, and Windsurf are the tested ones. The config is the same everywhere: `{"command": "x-use", "args": ["mcp"]}`.
+
+### How many X accounts can x-use manage?
+
+As many as you configure. Each account carries its own cookies, proxy, persona, keywords, and daily action caps in `config/accounts.json`, and gets its own browser session from a lazy pool that reaps idle sessions.
+
+### Will automating X get my account suspended?
+
+It can, and you should plan for that. x-use ships conservative defaults (jittered pacing, per-action daily caps, relevance filters) and keeps draft mode on so nothing publishes without your approval, but no tool can make browser automation risk-free. Read [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md) first, warm accounts up slowly, and keep the caps low.
+
+### What is the difference between x-use and twitter-automation-ai?
+
+They are the same project. `twitter-automation-ai` was renamed to `x-use` for the v2 relaunch, which added the MCP server, the `x-use` CLI, draft mode, and the PyPI package. Old URLs still redirect, and stars, forks, and issues came across intact.
+
+### Is x-use free?
+
+Yes, MIT licensed, installed with `pip install x-use-mcp`. The only costs are optional: an LLM key if you want server-side text generation, and residential proxies if you run several accounts at once.
+
 ## Development
 
 ```bash
@@ -165,9 +189,9 @@ pip install -e '.[dev]'
 pytest
 ```
 
-304 tests cover config loading and merging, dedup keys, LLM JSON extraction and the single-client service, tweet parsing, proxy pool selection, the MCP tool contract, drafts, sessions, the action queue, account writes, and the CLI; none of them needs a network or a browser. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the suite plus an import smoke check on Python 3.10/3.11/3.12.
+599 tests cover config loading and merging, dedup keys, LLM JSON extraction and the single-client service, tweet parsing, proxy pool selection, the MCP tool contract, drafts, sessions, the action queue, account writes, credential masking, and the CLI; none of them needs a network or a browser. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the suite plus an import smoke check on Python 3.10/3.11/3.12.
 
-The v2.0 relaunch is merged; PyPI publishing and MCP directory submissions are the remaining Phase 1 items. Dashboard and Docker are Phase 2; personas, plugins, and selector self-healing are Phase 3. See [ROADMAP.md](ROADMAP.md).
+x-use is published on PyPI and listed in the official MCP Registry as `io.github.ihuzaifashoukat/x-use`. Dashboard and Docker come next, then personas, plugins, and selector self-healing. See [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
