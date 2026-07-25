@@ -21,10 +21,10 @@ writer; the server drives the browser.
 2. **Queue gate.** `queue_post` / `queue_engagement` only store work. Nothing
    runs until an explicit `process_queue` call (daily caps apply).
 
-## Tool groups (32 tools)
+## Tool groups (33 tools)
 
 - **Read-only:** `list_accounts`, `get_account`, `get_metrics`,
-  `search_tweets`, `get_tweet`, `prepare_reply`, `list_queue`, `list_drafts`,
+  `search_tweets`, `search_profile`, `get_tweet`, `prepare_reply`, `list_queue`, `list_drafts`,
   `get_draft`, `reject_draft`, `get_run_status`, `get_account_health`,
   `list_proxies`
 - **Write (draft-gated):** `post_tweet`, `generate_and_post`,

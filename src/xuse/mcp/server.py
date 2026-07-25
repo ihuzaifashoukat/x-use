@@ -1,6 +1,6 @@
 """x-use MCP server — official MCP Python SDK v1.x ``FastMCP`` over stdio.
 
-Exposes the engine as 32 tools (see ``tools.py``): read-only/status tools,
+Exposes the engine as 33 tools (see ``tools.py``): read-only/status tools,
 draft-gated immediate writes, the scheduled-action queue, and account
 management. Run directly::
 
@@ -94,8 +94,8 @@ SERVER_INSTRUCTIONS = (
     "secrets are imported by server-side file path only. Read-only tools "
     "(list_accounts, get_account, get_metrics, list_queue, list_drafts, "
     "get_draft, get_run_status, get_account_health) never start a browser. "
-    "search_tweets, get_tweet, and prepare_reply are read-only (they never "
-    "post) but reuse the account's browser session."
+    "search_tweets, search_profile, get_tweet, and prepare_reply are "
+    "read-only (they never post) but reuse the account's browser session."
 )
 
 

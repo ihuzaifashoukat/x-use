@@ -2,7 +2,7 @@
 
 x-use is an MCP server that drives a real, logged-in browser on X (Twitter):
 post, reply, search, like, retweet, schedule, and manage multiple accounts,
-no X API key required. This is the full reference for its 32 tools:
+no X API key required. This is the full reference for its 33 tools:
 signatures, behavior, and gotchas.
 
 ## The two safety gates
@@ -97,7 +97,7 @@ registers, verifies, and interviews you to configure your account.
 
 ## Tool reference
 
-All 32 tools, grouped as in the README summary table.
+All 33 tools, grouped as in the README summary table.
 
 **Read-only & status**
 
@@ -118,6 +118,22 @@ Counters and recent events for an account.
 Search recent posts for a query. Each tweet carries its typed `media` list;
 `include_images=true` additionally attaches the first photo of up to 5
 tweets as image content.
+
+### search_profile(profile, limit=10, account?, include_images=false)
+
+Read recent posts from one profile. `profile` accepts a handle (`@nasa` or
+`nasa`), a profile URL, or a tweet URL, which resolves to its author. The
+handle is validated and a canonical `https://x.com/<handle>` is rebuilt from
+it, so query strings, fragments, and extra path segments in the input are
+discarded rather than navigated; anything that is not an X profile (a foreign
+host, an app route like `/home` or `/i`) errors before a browser starts.
+
+Use it to watch specific people and competitors, and to re-read one of your
+own published posts for its public counts. `search_tweets` remains the right
+tool for topic discovery.
+
+Profile timelines include pinned posts and reposts, so check each result's
+`user_handle` before treating it as the profile owner's own writing.
 
 ### get_tweet(account, tweet_url, include_images=true)
 

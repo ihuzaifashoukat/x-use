@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 from xuse.core.config_loader import ConfigLoader
 from xuse.core.llm_service import LLMService
@@ -237,6 +238,54 @@ _TWEET_ID_RE = re.compile(r"/status(?:es)?/(\d+)")
 def tweet_id_from_url(url: str) -> Optional[str]:
     match = _TWEET_ID_RE.search(url or "")
     return match.group(1) if match else None
+
+
+# X handles: 1-15 characters, letters/digits/underscore. Anything else is not
+# a handle, and the profile tool builds a URL from this value.
+_HANDLE_RE = re.compile(r"[A-Za-z0-9_]{1,15}")
+_PROFILE_HOSTS = frozenset({"x.com", "www.x.com", "mobile.x.com",
+                            "twitter.com", "www.twitter.com", "mobile.twitter.com"})
+# First path segments that are app routes rather than profiles. Scraping one
+# would return whatever that route renders and label it as somebody's timeline.
+_RESERVED_HANDLES = frozenset({
+    "home", "explore", "notifications", "messages", "search", "hashtag",
+    "settings", "compose", "i", "intent", "login", "logout", "signup",
+    "share", "tos", "privacy", "about", "account",
+})
+
+
+def profile_handle_from(profile: str) -> str:
+    """Extract a bare X handle from ``@name``, ``name``, or a profile URL.
+
+    A tweet URL resolves to its author (the first path segment). The caller
+    rebuilds a canonical ``https://x.com/<handle>`` from the return value
+    rather than navigating whatever string arrived, so a crafted URL can
+    never steer the browser off X.
+    """
+    raw = (profile or "").strip()
+    if not raw:
+        raise ToolError("profile must not be empty.")
+    if "/" in raw:
+        # URL form, with or without a scheme ("x.com/nasa" is common).
+        parsed = urlparse(raw if "://" in raw else "https://" + raw)
+        if parsed.scheme not in ("http", "https"):
+            raise ToolError(f"Unsupported URL scheme in profile: {profile!r}")
+        host = (parsed.hostname or "").lower()
+        if host not in _PROFILE_HOSTS:
+            raise ToolError(
+                f"Not an X profile URL (host {host or 'missing'!r}): {profile!r}")
+        segments = [s for s in parsed.path.split("/") if s]
+        if not segments:
+            raise ToolError(f"No handle in profile URL: {profile!r}")
+        raw = segments[0]
+    handle = raw.lstrip("@")
+    if not _HANDLE_RE.fullmatch(handle):
+        raise ToolError(
+            f"Invalid X handle {profile!r}: handles are 1-15 characters of "
+            "letters, digits, or '_'.")
+    if handle.lower() in _RESERVED_HANDLES:
+        raise ToolError(f"'{handle}' is an x.com app route, not a profile.")
+    return handle
 
 
 def mask_account(raw: Dict[str, Any]) -> Dict[str, Any]:

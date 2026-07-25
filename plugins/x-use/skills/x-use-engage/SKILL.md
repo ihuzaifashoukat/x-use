@@ -15,6 +15,10 @@ posts on its own.
    those. Confirm the account with `list_accounts` if unsure.
 2. **Search.** `search_tweets(keywords=<one query>, limit=5, account)`.
    One query per call; prefer 2-3 focused queries over one broad one.
+   To work a specific person or competitor instead of a topic, use
+   `search_profile(profile="@handle", limit=5, account)`. Profile timelines
+   include pinned posts and reposts, so check `user_handle` on each result
+   before treating it as theirs.
 3. **Read candidates properly.** For each promising tweet call
    `prepare_reply(account, tweet_url)`. You receive the text, the images
    (look at them — chart screenshots, memes, and UI shots change what a good

@@ -77,11 +77,11 @@ If `x-use` is not on your client's PATH, use the full path the installer printed
 
 ## MCP tools
 
-32 tools in six groups, full reference with signatures and examples: [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md). Two safety gates: write tools run in draft mode by default (review, then `approve_draft`), and the queue only stores work until an explicit `process_queue` call.
+33 tools in six groups, full reference with signatures and examples: [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md). Two safety gates: write tools run in draft mode by default (review, then `approve_draft`), and the queue only stores work until an explicit `process_queue` call.
 
 | Group | Tools |
 |---|---|
-| Read-only & status | `list_accounts`, `get_account`, `get_metrics`, `search_tweets`, `get_tweet`, `prepare_reply`, `list_queue`, `list_drafts`, `get_draft`, `reject_draft`, `get_run_status`, `get_account_health`, `list_proxies` |
+| Read-only & status | `list_accounts`, `get_account`, `get_metrics`, `search_tweets`, `search_profile`, `get_tweet`, `prepare_reply`, `list_queue`, `list_drafts`, `get_draft`, `reject_draft`, `get_run_status`, `get_account_health`, `list_proxies` |
 | Write (draft-gated) | `post_tweet`, `generate_and_post`, `reply_to_tweet`, `engage`, `run_cycle`, `approve_draft` |
 | Scheduled queue | `queue_post`, `queue_engagement`, `cancel_queued_action`, `process_queue` |
 | Composite (server LLM) | `research_and_stage`, `draft_post_variations` |
@@ -117,7 +117,7 @@ The legacy `python src/main.py` entry point still works via a deprecation shim. 
 
 | Area | What you get |
 |---|---|
-| MCP server | 32 tools over stdio on the official MCP Python SDK (`FastMCP`, pinned `mcp>=1.6,<2`): draft-gated writes, a persistent scheduled-action queue with daily caps, account management, and a lazy per-account browser session pool. |
+| MCP server | 33 tools over stdio on the official MCP Python SDK (`FastMCP`, pinned `mcp>=1.6,<2`): draft-gated writes, a persistent scheduled-action queue with daily caps, account management, and a lazy per-account browser session pool. |
 | Draft mode | On by default. Write tools build the full payload (including LLM-generated text), store a draft, and touch nothing until `approve_draft` runs. |
 | Multi-account engine | Post (including communities and media), reply, repost/quote, like, keyword search, and relevance-gated engagement. Per-account overrides for keywords, LLM settings, and action behavior. |
 | LLM generation | One OpenAI-compatible client (`llm`: api_key, base_url, model) covers OpenAI, OpenRouter, Azure, Gemini, and local servers. Only needed for `"auto"` text and background automation; interactive MCP use runs keyless. Keys resolve from env/`.env` first, then `config/settings.json`. |

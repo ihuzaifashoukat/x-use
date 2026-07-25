@@ -29,12 +29,14 @@ from helpers import (  # noqa: F401 — imported fixtures register for this modu
     session_pool,
 )
 
-# The 25 documented tools and the parameter names each must accept.
+# Every documented tool and the parameter names each must accept.
 EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "list_accounts": {"params": set(), "required": set()},
     "get_metrics": {"params": {"account"}, "required": {"account"}},
     "search_tweets": {"params": {"keywords", "limit", "account", "include_images"},
                       "required": {"keywords"}},
+    "search_profile": {"params": {"profile", "limit", "account", "include_images"},
+                       "required": {"profile"}},
     "get_tweet": {"params": {"account", "tweet_url", "include_images"}, "required": {"account", "tweet_url"}},
     "approve_draft": {"params": {"draft_id"}, "required": {"draft_id"}},
     "post_tweet": {"params": {"account", "text", "media", "community"}, "required": {"account", "text"}},

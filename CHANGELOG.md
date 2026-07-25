@@ -8,6 +8,27 @@ project follows [semantic versioning](https://semver.org/). See
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`search_profile`, a read-only MCP tool for reading one profile's recent posts.**
+  32 → 33 tools. The scraper could already read profile timelines, but the only way
+  to reach that was `run_cycle`, which is the one tool with no draft gate in front
+  of it. Watching a competitor should not require the ungated batch path.
+
+  `profile` accepts a handle (`@nasa` or `nasa`), a profile URL, or a tweet URL,
+  which resolves to its author. The handle is validated against X's charset and a
+  canonical `https://x.com/<handle>` is rebuilt from it, so query strings,
+  fragments, and extra path segments are discarded rather than navigated. Foreign
+  hosts and x.com app routes (`/home`, `/i`, `/search`) error before a browser
+  starts.
+
+  It also closes a gap in performance tracking: nothing reported how a published
+  post did, and re-reading your own timeline is the answer.
+
+---
+
 ## [2.3.1], 2026-07-25
 
 Packaging, documentation, and release plumbing. No changes to `src/`, so behaviour is

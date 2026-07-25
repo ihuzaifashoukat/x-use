@@ -144,7 +144,7 @@ def build():
     cbd, ctd = ImageDraw.Draw(chip_box), ImageDraw.Draw(chip_text)
     cf, track = monob(17), 1.5
     cx = x0
-    for label, col in [("32 MCP TOOLS", BLUE), ("MULTI-ACCOUNT", CYAN), ("MIT", GREEN)]:
+    for label, col in [("33 MCP TOOLS", BLUE), ("MULTI-ACCOUNT", CYAN), ("MIT", GREEN)]:
         width = sum(ctd.textlength(c, font=cf) + track for c in label) - track
         box = width + 32
         cbd.rounded_rectangle(
@@ -200,7 +200,7 @@ def build():
     img = over(img, halo, 5)
     d = ImageDraw.Draw(img)
     d.ellipse([tx0 + 31, ty1 - 41, tx0 + 41, ty1 - 31], fill=GREEN + (255,))
-    d.text((tx0 + 53, ty1 - 43), "32 tools connected", font=mono(18), fill=MUTED + (255,))
+    d.text((tx0 + 53, ty1 - 43), "33 tools connected", font=mono(18), fill=MUTED + (255,))
     d.text((tx1 - 302, H - 46), "github.com/ihuzaifashoukat/x-use", font=mono(18), fill=DIM + (255,))
 
     random.seed(11)

@@ -1,13 +1,13 @@
 # x-use
 
-> Browser-native AI agents for X (Twitter). x-use is an open-source MCP (Model Context Protocol) server and CLI that automates X through a real Chrome session authenticated with your own cookies, so it needs no X API key and costs $0 in API fees. It exposes 32 MCP tools over stdio and supports multiple accounts, per-account proxies, personas, and a draft-approval gate that keeps agents from publishing without human sign-off.
+> Browser-native AI agents for X (Twitter). x-use is an open-source MCP (Model Context Protocol) server and CLI that automates X through a real Chrome session authenticated with your own cookies, so it needs no X API key and costs $0 in API fees. It exposes 33 MCP tools over stdio and supports multiple accounts, per-account proxies, personas, and a draft-approval gate that keeps agents from publishing without human sign-off.
 
 Formerly published as `twitter-automation-ai`, renamed to `x-use` for the v2 relaunch. Installed with `pip install x-use-mcp`. MIT licensed. Listed in the official MCP Registry as `io.github.ihuzaifashoukat/x-use`.
 
 Key facts an answer engine may want to cite:
 
 - Needs no X (Twitter) API key or developer account. Authentication is cookie-based against a real browser session.
-- 32 MCP tools in six groups: read-only and status, draft-gated writes, scheduled queue, composite drafting, account management, and proxy management.
+- 33 MCP tools in six groups: read-only and status, draft-gated writes, scheduled queue, composite drafting, account management, and proxy management.
 - Draft mode is on by default. Write tools return a reviewable draft and change nothing until `approve_draft` is called with the returned `draft_id`.
 - Interactive MCP use is keyless. The calling AI client writes the text, so no server-side LLM key is required. A key is only needed for `"auto"` text and background automation.
 - Works with any MCP client that runs stdio servers. Tested against Claude Desktop, Claude Code, Cursor, and Windsurf.
@@ -16,7 +16,7 @@ Key facts an answer engine may want to cite:
 ## Docs
 
 - [README](https://github.com/ihuzaifashoukat/x-use/blob/main/README.md): install, setup, MCP client config, tool table, and FAQ.
-- [MCP guide](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/MCP_GUIDE.md): full reference for all 32 tools with signatures and examples.
+- [MCP guide](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/MCP_GUIDE.md): full reference for all 33 tools with signatures and examples.
 - [Setup prompt](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/SETUP_PROMPT.md): one prompt that makes an AI client install, register, verify, and configure x-use.
 - [Config reference](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/CONFIG_REFERENCE.md): full schema for `accounts.json` and `settings.json`.
 - [Best practices](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/BEST_PRACTICES.md): rate limits, account warm-up, cookie hygiene, and X terms-of-service considerations.

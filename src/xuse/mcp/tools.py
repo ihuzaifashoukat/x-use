@@ -68,6 +68,24 @@ def dump_tweet(tweet) -> Dict[str, Any]:
     return data
 
 
+async def attach_search_images(envelope: Dict[str, Any], tweets) -> Any:
+    """Attach the first photo of up to MAX_IMAGES_PER_SEARCH tweets.
+
+    Bounded across the whole result set, not per tweet: a 50-tweet page with
+    four photos each would be 200 downloads and a payload no client wants.
+    The envelope's per-tweet ``media`` URLs + alt text are always present, so
+    dropping images here never loses information.
+    """
+    images: List[Any] = []
+    for tweet in tweets:
+        if len(images) >= MAX_IMAGES_PER_SEARCH:
+            break
+        if any(m.type == "image" for m in (getattr(tweet, "media", None) or [])):
+            fetched = await asyncio.to_thread(images_for_tweet, tweet, 1)
+            images.extend(fetched[: MAX_IMAGES_PER_SEARCH - len(images)])
+    return with_images(envelope, images)
+
+
 async def scrape_single_tweet(ctx: Ctx, account_id: str, tweet_url: str, tweet_id: str):
     """Read-only fetch of one tweet's content (for auto-reply generation)."""
     async with ctx.session_pool.session(account_id) as browser_manager:
@@ -158,15 +176,38 @@ def register_tools(server, ctx: Ctx) -> None:
                        tweets=[dump_tweet(t) for t in tweets])
         if not include_images:
             return envelope
-        images = []
-        for tweet in tweets:
-            if len(images) >= MAX_IMAGES_PER_SEARCH:
-                break
-            photo_items = [m for m in (getattr(tweet, "media", None) or []) if m.type == "image"]
-            if photo_items:
-                fetched = await asyncio.to_thread(images_for_tweet, tweet, 1)
-                images.extend(fetched[: MAX_IMAGES_PER_SEARCH - len(images)])
-        return with_images(envelope, images)
+        return await attach_search_images(envelope, tweets)
+
+    @server.tool()
+    @guard
+    async def search_profile(profile: str, limit: int = 10, account: Optional[str] = None,
+                             include_images: bool = False) -> dict[str, Any]:
+        """Read recent posts from ONE X profile. `profile` takes a handle
+        ("@nasa" or "nasa"), a profile URL, or a tweet URL (which resolves to
+        its author). Read-only (draft mode does not apply — nothing is
+        posted), but it reuses the account's browser session. `account`
+        defaults to the first active configured account.
+        Use this to watch specific people and competitors, and to re-read one
+        of your own published posts for its public counts; use search_tweets
+        for topic and keyword discovery. Profile timelines include pinned
+        posts and reposts, so check `user_handle` before treating a result as
+        the profile owner's own writing.
+        `include_images=true` additionally attaches the first photo of up to
+        5 posts as image content (bounded); the per-post `media` URLs + alt
+        text are always present."""
+        account_id, _, _ = ex.resolve_account(ctx, account)
+        handle = ex.profile_handle_from(profile)
+        profile_url = f"https://x.com/{handle}"
+        limit = max(1, min(int(limit), 50))
+        async with ctx.session_pool.session(account_id) as browser_manager:
+            scraper = await asyncio.to_thread(TweetScraper, browser_manager, account_id)
+            tweets = await asyncio.to_thread(
+                scraper.scrape_tweets_from_profile, profile_url, limit)
+        envelope = ok_(account=account_id, profile=f"@{handle}", profile_url=profile_url,
+                       count=len(tweets), tweets=[dump_tweet(t) for t in tweets])
+        if not include_images:
+            return envelope
+        return await attach_search_images(envelope, tweets)
 
     @server.tool()
     @guard

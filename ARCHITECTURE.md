@@ -149,7 +149,9 @@ v2.0 shipped the packaging, CLI, and MCP layer described here; the engine from s
 
 Module: `src/xuse/mcp/`, built on the official MCP Python SDK **stable v1.x** `FastMCP` (`from mcp.server.fastmcp import FastMCP`) over **stdio** transport, so it plugs into Claude Desktop, Claude Code, Cursor, and Windsurf. Note: SDK v2 (alpha) renames `FastMCP` to `MCPServer` under `mcp.server.mcpserver`; x-use pins `mcp>=1,<2` until v2 stabilizes.
 
-Nine tools, each a thin wrapper over an existing module (no Selenium logic in tools):
+Every tool is a thin wrapper over an existing module, with no Selenium logic in
+the tool layer. A representative sample of what wraps what (the complete
+33-tool reference lives in [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md)):
 
 | Tool | Wraps |
 |---|---|
@@ -157,6 +159,7 @@ Nine tools, each a thin wrapper over an existing module (no Selenium logic in to
 | `post_tweet(account, text, media?, community?)` | publisher composer + audience selector |
 | `generate_and_post(account, topic)` | content generator + publisher |
 | `search_tweets(keywords, limit)` | scraper keyword search |
+| `search_profile(profile, limit)` | scraper profile timeline (handle validated, URL rebuilt) |
 | `reply_to_tweet(account, tweet_url, text \| auto)` | reply handler (auto = LLM-generated) |
 | `engage(account, keywords, actions, max)` | engagement + analyzer gates |
 | `run_cycle(account?, pipelines?)` | the orchestrator |
