@@ -17,6 +17,7 @@ from xuse.queue import ALL_STATUSES, QueueStore
 from . import actions, executor as ex
 from .executor import Ctx, ToolError
 from .tools import guard, ok_, scrape_single_tweet
+from .annotations import LOCAL_WRITE, LOCAL_WRITE_IDEMPOTENT, PUBLISHES_TO_X, READ_ONLY_LOCAL
 
 logger = logging.getLogger(__name__)
 
@@ -79,14 +80,14 @@ def _enqueue(ctx: Ctx, *, account_id: str, action: str, payload: Dict[str, Any],
     logger.info("Queued %s for account '%s' as %s.", action, account_id, item.queue_id)
     return ok_(queued=True, queue_id=item.queue_id, account=account_id, action=action,
                position=position, payload=payload,
-               message="Queued — nothing executes until process_queue is called "
+               message="Queued, nothing executes until process_queue is called "
                        "(or the auto_drain worker runs, if enabled).")
 
 
 def register_queue_tools(server, ctx: Ctx) -> None:
     """Register the five queue tools on the FastMCP server."""
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_WRITE)
     @guard
     async def queue_post(account: str, text: Optional[str] = None,
                          topic: Optional[str] = None,
@@ -95,7 +96,7 @@ def register_queue_tools(server, ctx: Ctx) -> None:
                          not_before: Optional[str] = None) -> Dict[str, Any]:
         """Schedule a post for paced execution. Pass `text` verbatim, or a
         `topic` to generate the text NOW with the configured LLM (the stored
-        payload is final — list_queue shows exactly what will be posted).
+        payload is final, list_queue shows exactly what will be posted).
         `not_before` is an optional ISO 8601 timestamp. Nothing executes
         until process_queue is called (or auto_drain, if enabled)."""
         account_id, raw, _ = ex.resolve_account(ctx, account)
@@ -122,7 +123,7 @@ def register_queue_tools(server, ctx: Ctx) -> None:
                                  "community": community},
                         dedup_key=dedup_key, not_before=nb)
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_WRITE)
     @guard
     async def queue_engagement(account: str, action: str, tweet_url: str,
                                text: Optional[str] = None) -> Dict[str, Any]:
@@ -156,12 +157,12 @@ def register_queue_tools(server, ctx: Ctx) -> None:
         return _enqueue(ctx, account_id=account_id, action=action,
                         payload=payload, dedup_key=dedup_key, not_before=None)
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def list_queue(account: Optional[str] = None,
                          status: Optional[str] = None) -> Dict[str, Any]:
         """List queued actions with their full payloads (exactly what will
-        fire), plus per-status counts. Read-only — never starts a browser."""
+        fire), plus per-status counts. Read-only, never starts a browser."""
         store = _store(ctx)
         if status is not None and status not in ALL_STATUSES:
             raise ToolError(f"Unknown status '{status}'. Allowed: {list(ALL_STATUSES)}.")
@@ -170,7 +171,7 @@ def register_queue_tools(server, ctx: Ctx) -> None:
         return ok_(count=len(items), counts=store.counts(account=account),
                    items=[i.model_dump(mode="json") for i in items])
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_WRITE_IDEMPOTENT)
     @guard
     async def cancel_queued_action(queue_id: str) -> Dict[str, Any]:
         """Cancel a pending or failed queued action. Done, processing, and
@@ -181,11 +182,11 @@ def register_queue_tools(server, ctx: Ctx) -> None:
         except KeyError:
             raise ToolError(f"Unknown queue_id '{queue_id}'.") from None
         if item.status not in ("pending", "failed"):
-            raise ToolError(f"Queue item '{queue_id}' is {item.status} — cannot cancel.")
+            raise ToolError(f"Queue item '{queue_id}' is {item.status}, cannot cancel.")
         store.set_status(queue_id, "cancelled")
         return ok_(queue_id=queue_id, status="cancelled")
 
-    @server.tool()
+    @server.tool(annotations=PUBLISHES_TO_X)
     @guard
     async def process_queue(account: Optional[str] = None,
                             max_actions: int = 5) -> Dict[str, Any]:

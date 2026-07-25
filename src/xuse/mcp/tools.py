@@ -22,6 +22,7 @@ from . import actions, executor as ex
 from .drafts import Draft
 from .executor import Ctx, ToolError
 from .sessions import SessionError
+from .annotations import PUBLISHES_TO_X, READ_ONLY_FROM_X, READ_ONLY_LOCAL
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ def draft_response(draft: Draft) -> Dict[str, Any]:
         payload=draft.payload,
         preview=draft.preview,
         status=draft.status,
-        message="Draft created — nothing was posted. Review, then call approve_draft(draft_id) to execute.",
+        message="Draft created, nothing was posted. Review, then call approve_draft(draft_id) to execute.",
     )
 
 
@@ -105,19 +106,19 @@ async def scrape_single_tweet(ctx: Ctx, account_id: str, tweet_url: str, tweet_i
 def register_tools(server, ctx: Ctx) -> None:
     """Register all x-use tools on the FastMCP server."""
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def list_accounts() -> Dict[str, Any]:
         """List configured accounts with secrets stripped (no cookies, no
-        passwords, proxy credentials masked). Read-only — never starts a browser."""
+        passwords, proxy credentials masked). Read-only, never starts a browser."""
         accounts = [ex.mask_account(a) for a in ctx.config_loader.get_accounts_config() if isinstance(a, dict)]
         return ok_(accounts=accounts, count=len(accounts))
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def get_metrics(account: str) -> Dict[str, Any]:
         """Read recorded metrics for an account (counters + recent events).
-        Read-only — never starts a browser."""
+        Read-only, never starts a browser."""
         if not _SAFE_ACCOUNT_ID.fullmatch(account):
             raise ToolError(f"Invalid account id: {account!r}")
         summary_path = PROJECT_ROOT / "data" / "metrics" / f"{account}.json"
@@ -141,7 +142,7 @@ def register_tools(server, ctx: Ctx) -> None:
                 # shape verbatim under ok:true — the documented summary is a dict.
                 warning = (
                     f"Metrics file for account '{account}' has an unexpected shape "
-                    f"({type(loaded_summary).__name__}, expected an object) — returning default counters."
+                    f"({type(loaded_summary).__name__}, expected an object). Returning default counters."
                 )
                 logger.warning("get_metrics: %s", warning)
         recent_events: List[Dict[str, Any]] = []
@@ -157,7 +158,7 @@ def register_tools(server, ctx: Ctx) -> None:
             envelope["warning"] = warning
         return envelope
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_FROM_X)
     @guard
     async def search_tweets(keywords: str, limit: int = 10, account: Optional[str] = None,
                             include_images: bool = False) -> dict[str, Any]:
@@ -178,13 +179,13 @@ def register_tools(server, ctx: Ctx) -> None:
             return envelope
         return await attach_search_images(envelope, tweets)
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_FROM_X)
     @guard
     async def search_profile(profile: str, limit: int = 10, account: Optional[str] = None,
                              include_images: bool = False) -> dict[str, Any]:
         """Read recent posts from ONE X profile. `profile` takes a handle
         ("@nasa" or "nasa"), a profile URL, or a tweet URL (which resolves to
-        its author). Read-only (draft mode does not apply — nothing is
+        its author). Read-only (draft mode does not apply, nothing is
         posted), but it reuses the account's browser session. `account`
         defaults to the first active configured account.
         Use this to watch specific people and competitors, and to re-read one
@@ -209,7 +210,7 @@ def register_tools(server, ctx: Ctx) -> None:
             return envelope
         return await attach_search_images(envelope, tweets)
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_FROM_X)
     @guard
     async def get_tweet(account: str, tweet_url: str, include_images: bool = True) -> dict[str, Any]:
         """Read-only fetch of one tweet: text, author, public counts, typed
@@ -241,7 +242,7 @@ def register_tools(server, ctx: Ctx) -> None:
         images = await asyncio.to_thread(images_for_tweet, original)
         return with_images(envelope, images)
 
-    @server.tool()
+    @server.tool(annotations=PUBLISHES_TO_X)
     @guard
     async def approve_draft(draft_id: str) -> Dict[str, Any]:
         """Execute a pending draft created by a write tool. Runs the exact
@@ -252,7 +253,7 @@ def register_tools(server, ctx: Ctx) -> None:
         except KeyError:
             raise ToolError(f"Unknown draft_id '{draft_id}'.") from None
         if draft.status != "pending":
-            raise ToolError(f"Draft '{draft_id}' is already {draft.status} — it cannot be (re-)approved.")
+            raise ToolError(f"Draft '{draft_id}' is already {draft.status}, it cannot be (re-)approved.")
         ctx.draft_store.set_status(draft_id, "approved")
         try:
             result = await actions.execute_draft(ctx, draft)

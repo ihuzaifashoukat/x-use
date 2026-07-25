@@ -14,6 +14,7 @@ from xuse.models import AccountConfig
 from . import executor as ex
 from .executor import Ctx, ToolError
 from .tools import guard, ok_
+from .annotations import LOCAL_WRITE_IDEMPOTENT, READ_ONLY_LOCAL
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ _SAFE_ACCOUNT_ID = re.compile(r"[A-Za-z0-9_-]+")
 def register_support_tools(server, ctx: Ctx) -> None:
     """Register the five support tools on the FastMCP server."""
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def list_drafts(status: Optional[str] = None, account: Optional[str] = None,
                           limit: int = 20) -> Dict[str, Any]:
@@ -43,7 +44,7 @@ def register_support_tools(server, ctx: Ctx) -> None:
         return ok_(total=total, returned=min(total, limit),
                    drafts=[json.loads(d.model_dump_json()) for d in drafts[:limit]])
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def get_draft(draft_id: str) -> Dict[str, Any]:
         """Show one draft by id. Read-only."""
@@ -53,23 +54,23 @@ def register_support_tools(server, ctx: Ctx) -> None:
             raise ToolError(f"Unknown draft_id '{draft_id}'.") from None
         return ok_(draft=json.loads(draft.model_dump_json()))
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_WRITE_IDEMPOTENT)
     @guard
     async def reject_draft(draft_id: str) -> Dict[str, Any]:
         """Reject a pending draft so it can never be approved. Local status
-        change only — nothing touches X."""
+        change only, nothing touches X."""
         try:
             draft = ctx.draft_store.get(draft_id)
         except KeyError:
             raise ToolError(f"Unknown draft_id '{draft_id}'.") from None
         if draft.status != "pending":
             raise ToolError(
-                f"Draft '{draft_id}' is already {draft.status} — "
+                f"Draft '{draft_id}' is already {draft.status}, "
                 "only pending drafts can be rejected.")
         ctx.draft_store.set_status(draft_id, "rejected")
         return ok_(draft_id=draft_id, status="rejected")
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def get_run_status(run_id: Optional[str] = None) -> Dict[str, Any]:
         """Poll run_cycle handles. With `run_id` omitted, lists every run
@@ -85,14 +86,14 @@ def register_support_tools(server, ctx: Ctx) -> None:
         return ok_(count=len(ctx.runs),
                    runs=[{"run_id": rid, **_public(r)} for rid, r in ctx.runs.items()])
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def get_account_health(account: str) -> Dict[str, Any]:
         """Read-only health snapshot for one account: config presence,
         cookie-file validity, metrics counters, warm-session state, queue
         depth, pending drafts. Never starts a browser. A config that fails
         validation is REPORTED (config.valid=false with the error), not
-        raised — surfacing that is the point of a health check."""
+        raised, surfacing that is the point of a health check."""
         raw = ctx.session_pool.find_account_dict(account)  # SessionError if unknown
         account_id = raw.get("account_id", account)
         if not _SAFE_ACCOUNT_ID.fullmatch(account_id):

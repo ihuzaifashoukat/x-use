@@ -20,6 +20,7 @@ from xuse.pipelines import PIPELINE_FLAGS as _PIPELINE_FLAGS
 from . import actions, executor as ex
 from .executor import Ctx, ToolError
 from .tools import draft_response, guard, ok_, scrape_single_tweet
+from .annotations import PUBLISHES_TO_X, READ_ONLY_FROM_X
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 def register_write_tools(server, ctx: Ctx) -> None:
     """Register the write-side tools (except engage) on the FastMCP server."""
 
-    @server.tool()
+    @server.tool(annotations=PUBLISHES_TO_X)
     @guard
     async def post_tweet(
         account: str,
@@ -57,7 +58,7 @@ def register_write_tools(server, ctx: Ctx) -> None:
         result = await actions.exec_post(ctx, account_id, text=text, media=media, community=community)
         return ok_(**result)
 
-    @server.tool()
+    @server.tool(annotations=PUBLISHES_TO_X)
     @guard
     async def generate_and_post(account: str, topic: str) -> Dict[str, Any]:
         """Generate a post about `topic` with the configured LLM and post it.
@@ -79,7 +80,7 @@ def register_write_tools(server, ctx: Ctx) -> None:
         result = await actions.exec_post(ctx, account_id, text=text)
         return ok_(generated_text=text, **result)
 
-    @server.tool()
+    @server.tool(annotations=PUBLISHES_TO_X)
     @guard
     async def reply_to_tweet(account: str, tweet_url: str, text: str = "auto") -> Dict[str, Any]:
         """Reply to a tweet. Pass explicit `text`, or "auto" to generate the
@@ -115,12 +116,12 @@ def register_write_tools(server, ctx: Ctx) -> None:
         result = await actions.exec_reply(ctx, account_id, tweet_url, reply_text, tweet_id, text_content)
         return ok_(**result)
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_FROM_X)
     @guard
     async def prepare_reply(account: str, tweet_url: str, include_images: bool = True) -> dict[str, Any]:
         """Read-only reply context: the tweet's text AND media (photos attach
         as image content so your model can see them), plus the account's
-        keywords and persona — YOUR model writes the reply itself, no
+        keywords and persona. YOUR model writes the reply itself, no
         server-side LLM, nothing posted. Then pass your text to
         reply_to_tweet(text=...) or queue_engagement(action="reply", text=...)."""
         account_id, _, model = ex.resolve_account(ctx, account)
@@ -147,16 +148,16 @@ def register_write_tools(server, ctx: Ctx) -> None:
         images = await asyncio.to_thread(images_for_tweet, original)
         return with_images(envelope, images)
 
-    @server.tool()
+    @server.tool(annotations=PUBLISHES_TO_X)
     @guard
     async def run_cycle(account: Optional[str] = None, pipelines: Optional[str] = None) -> Dict[str, Any]:
         """Run the legacy batch automation cycle in the background and return
-        a run handle immediately (progress goes to the logs — this never
+        a run handle immediately (progress goes to the logs, this never
         silent-blocks). `account` limits the run to one account; `pipelines`
         is a comma-separated subset of: competitor_reposts, keyword_replies,
         keyword_retweets, likes, content_curation, community_engagement
         (mapped onto the account's ActionConfig enable flags for this run
-        only — config files are never mutated; same names as the CLI's
+        only, config files are never mutated; same names as the CLI's
         `x-use run --pipeline`). Draft mode does not apply to batch cycles."""
         raw_accounts = ctx.config_loader.get_accounts_config()
         targets: List[Dict[str, Any]] = []
@@ -202,4 +203,4 @@ def register_write_tools(server, ctx: Ctx) -> None:
             "task": task,
         }
         return ok_(run_id=run_id, status="running", accounts=account_ids,
-                   message="Cycle running in background — watch logs/accounts/<account_id>.jsonl for progress.")
+                   message="Cycle running in background. Watch logs/accounts/<account_id>.jsonl for progress.")

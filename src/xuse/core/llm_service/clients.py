@@ -19,6 +19,7 @@ api_keys.openai_api_key is honored as a last-resort key source. Legacy
 gemini/azure keys are ignored with a one-time warning. Key values are never
 logged; only the supplying source label is.
 """
+import importlib.util
 import logging
 import os
 from typing import Any, Dict, Optional, Tuple
@@ -30,12 +31,12 @@ from .constants import API_KEY_PLACEHOLDERS
 
 logger = logging.getLogger(__name__)
 
-try:
-    from openai import AsyncOpenAI
-    OPENAI_AVAILABLE = True
-except Exception:  # pragma: no cover - SDK is a hard dependency in practice
-    AsyncOpenAI = None  # type: ignore
-    OPENAI_AVAILABLE = False
+# Probed without importing the SDK. `import openai` costs roughly three seconds
+# and every process start paid it, including MCP stdio boot, where the client on
+# the other end is waiting on the handshake before it will ask for anything.
+# Nothing in this module needs the SDK until a client is actually constructed,
+# so the import moved down to that one spot.
+OPENAI_AVAILABLE = importlib.util.find_spec("openai") is not None
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
@@ -138,10 +139,12 @@ def build_client(config_loader: ConfigLoader) -> Tuple[Optional[Any], Dict[str, 
     if not _is_api_key_valid("openai_api_key", api_key):
         logger.info(
             "No LLM API key configured (source: %s); server-side generation disabled. "
-            "Interactive MCP use does not need one — the calling agent writes the text.",
+            "Interactive MCP use does not need one, the calling agent writes the text.",
             key_source)
         return None, resolved
     try:
+        from openai import AsyncOpenAI  # deferred, see OPENAI_AVAILABLE above
+
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         logger.info(
             "LLM client initialized (model=%s, base_url=%s, key source: %s).",

@@ -22,6 +22,7 @@ from xuse.doctor import check_cookie_data
 from . import executor as ex
 from .executor import Ctx, ToolError
 from .tools import guard, ok_
+from .annotations import LOCAL_DESTRUCTIVE, LOCAL_WRITE, LOCAL_WRITE_IDEMPOTENT, READ_ONLY_LOCAL
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def _known_account(ctx: Ctx, account: str) -> Dict[str, Any]:
     for raw in ctx.config_loader.get_accounts_config():
         if isinstance(raw, dict) and raw.get("account_id") == account:
             return raw
-    raise ToolError(f"Unknown account '{account}' — not present in config/accounts.json.")
+    raise ToolError(f"Unknown account '{account}', not present in config/accounts.json.")
 
 
 def _cookie_status(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -146,16 +147,16 @@ def _commit_cookie_copy(rollback: Optional[_CookieRollback]) -> None:
 def register_account_tools(server, ctx: Ctx) -> None:
     """Register the five account-management tools on the FastMCP server."""
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def get_account(account: str) -> Dict[str, Any]:
         """Show one account's masked config (no cookies, no password, proxy
-        credentials masked) plus cookie-file status. Read-only — never
+        credentials masked) plus cookie-file status. Read-only, never
         starts a browser."""
         raw = _known_account(ctx, account)
         return ok_(account=ex.mask_account(raw), **_cookie_status(raw))
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_WRITE)
     @guard
     async def add_account(account_id: str, cookie_file: Optional[str] = None,
                           proxy: Optional[str] = None,
@@ -200,7 +201,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
                    message=f"Account '{account_id}' added. Previous accounts.json "
                            "is backed up in config/backups/.")
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_WRITE_IDEMPOTENT)
     @guard
     async def update_account(account: str, is_active: Optional[bool] = None,
                              proxy: Optional[str] = None,
@@ -261,7 +262,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
         return ok_(account=ex.mask_account(_known_account(ctx, account)),
                    message=f"Account '{account}' updated; warm session closed.")
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_WRITE_IDEMPOTENT)
     @guard
     async def set_account_active(account: str, active: bool) -> Dict[str, Any]:
         """Enable or pause an account without deleting it. Pausing closes
@@ -283,7 +284,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
             await ctx.session_pool.close(account)
         return ok_(account=account, is_active=bool(active))
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_DESTRUCTIVE)
     @guard
     async def remove_account(account: str, confirm: bool = False) -> Dict[str, Any]:
         """Remove an account from config/accounts.json. Requires

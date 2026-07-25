@@ -21,6 +21,7 @@ from . import executor as ex
 from .executor import Ctx, ToolError
 from .sessions import SessionError
 from .tools import guard, ok_
+from .annotations import PUBLISHES_TO_X
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ async def _relevance_passes(ctx: Ctx, analyzer: TweetAnalyzer, account, tweet) -
 def register_engage_tool(server, ctx: Ctx) -> None:
     """Register the engage tool on the FastMCP server."""
 
-    @server.tool()
+    @server.tool(annotations=PUBLISHES_TO_X)
     @guard
     async def engage(
         account: str,

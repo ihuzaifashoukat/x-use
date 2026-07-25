@@ -14,6 +14,7 @@ from xuse.features.scraper import TweetScraper
 from . import actions, executor as ex
 from .executor import Ctx, ToolError
 from .tools import guard, ok_
+from .annotations import STAGES_GENERATED_DRAFT
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +26,13 @@ MIN_RELEVANCE = 0.5
 def register_composite_tools(server, ctx: Ctx) -> None:
     """Register the composite (server-LLM) tools on the FastMCP server."""
 
-    @server.tool()
+    @server.tool(annotations=STAGES_GENERATED_DRAFT)
     @guard
     async def research_and_stage(account: str, keywords: List[str],
                                  max_items: int = 3) -> Dict[str, Any]:
         """Search each keyword, keep relevant tweets (keyless heuristic), write
         a reply per tweet with the server-side LLM (persona-aware), and stage
-        one reply DRAFT per tweet. Nothing is posted — review with list_drafts
+        one reply DRAFT per tweet. Nothing is posted, review with list_drafts
         and approve selectively. Requires the 'llm' block in settings."""
         account_id, raw, model = ex.resolve_account(ctx, account)
         ex.require_active(raw, account_id)
@@ -69,15 +70,15 @@ def register_composite_tools(server, ctx: Ctx) -> None:
                            "author": f"@{handle}" if handle else None, "text": text})
         return ok_(account=account_id, considered=considered,
                    skipped_irrelevant=considered - len(relevant), drafts=drafts,
-                   message="Drafts staged — nothing posted. Review with list_drafts, "
+                   message="Drafts staged, nothing posted. Review with list_drafts, "
                            "then approve_draft(draft_id).")
 
-    @server.tool()
+    @server.tool(annotations=STAGES_GENERATED_DRAFT)
     @guard
     async def draft_post_variations(account: str, topic: str, count: int = 3) -> Dict[str, Any]:
         """Generate `count` distinct takes on a topic with the server-side LLM
-        (persona-aware) and stage each as a post DRAFT. Nothing is posted —
-        approve one, reject the rest. Requires the 'llm' block in settings."""
+        (persona-aware) and stage each as a post DRAFT. Nothing is posted,
+        approve one and reject the rest. Requires the 'llm' block in settings."""
         account_id, raw, model = ex.resolve_account(ctx, account)
         ex.require_active(raw, account_id)
         ex.require_llm(ctx)
@@ -97,5 +98,5 @@ def register_composite_tools(server, ctx: Ctx) -> None:
             )
             drafts.append({"draft_id": draft.draft_id, "text": text})
         return ok_(account=account_id, topic=topic, drafts=drafts,
-                   message="Drafts staged — nothing posted. Approve one with "
+                   message="Drafts staged, nothing posted. Approve one with "
                            "approve_draft(draft_id); reject_draft the rest.")

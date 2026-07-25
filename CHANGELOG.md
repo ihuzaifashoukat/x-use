@@ -10,7 +10,38 @@ project follows [semantic versioning](https://semver.org/). See
 
 ## [Unreleased]
 
+### Added
+
+- **Every tool now declares MCP annotations** (`readOnlyHint`, `destructiveHint`,
+  `idempotentHint`, `openWorldHint`) via named constants in
+  `src/xuse/mcp/annotations.py`. The read-only vs write boundary existed only as
+  prose inside tool descriptions, so no host could enforce it and directory
+  scanners that treat annotations as the authoritative capability declaration saw
+  33 tools stating nothing at all.
+
+  The split: 14 read-only, 17 writes, 2 destructive (`remove_account`,
+  `remove_proxy`). Publishing is deliberately *not* marked destructive, because
+  posting adds rather than overwrites; reserving that flag for real deletion is
+  what keeps it worth reading. The two publish gates, `approve_draft` and
+  `process_queue`, are the tools carrying `openWorldHint` for a state change on X.
+  `tests/mcp/test_annotations.py` pins each set.
+
+- **`glama.json`** claiming the Glama listing, and a **`Dockerfile`** that builds
+  from source and starts the stdio server. Glama builds a container to introspect
+  a server; with no Dockerfile it could not enumerate tools, which is why the
+  listing showed none.
+
 ### Changed
+
+- **Boot is roughly twice as fast**: the `openai` SDK was imported at module
+  scope in `core/llm_service/clients.py`, costing about three seconds on every
+  process start including MCP stdio boot, where the client is blocked on the
+  handshake. Availability is now probed with `importlib.util.find_spec` and the
+  SDK is imported only where a client is constructed. Boot plus introspection
+  went from 10.1s to 5.3s.
+
+- **Tool descriptions and user-facing messages are ASCII.** Em dashes were
+  shipping in `tools/list` and mojibaking in consumers that assume latin-1.
 
 - **The root `SKILL.md` is now the install-and-configure skill**, not a copy of
   the router. An agent meeting this repository for the first time has no x-use

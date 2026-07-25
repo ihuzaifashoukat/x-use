@@ -28,6 +28,7 @@ from xuse.utils.sanitize import mask_url_userinfo
 from . import executor as ex
 from .executor import Ctx, ToolError
 from .tools import guard, ok_
+from .annotations import LOCAL_DESTRUCTIVE, LOCAL_WRITE_IDEMPOTENT, READ_ONLY_FROM_X, READ_ONLY_LOCAL
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +96,12 @@ def _mutate_pools(ctx: Ctx, fn) -> Dict[str, Any]:
 def register_proxy_tools(server, ctx: Ctx) -> None:
     """Register the four proxy-management tools on the FastMCP server."""
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def list_proxies() -> Dict[str, Any]:
         """List proxy pools (size, masked members, rotation cursor), the global
         pool strategy, each account's assignment, and the global fallback
-        proxy. Read-only — never starts a browser."""
+        proxy. Read-only, never starts a browser."""
         accounts = [
             {"account_id": a["account_id"], "proxy": mask_proxy(a.get("proxy"))}
             for a in ctx.config_loader.get_accounts_config()
@@ -115,11 +116,11 @@ def register_proxy_tools(server, ctx: Ctx) -> None:
             global_proxy=mask_proxy(fallback) if fallback else None,
         )
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_WRITE_IDEMPOTENT)
     @guard
     async def add_proxy(pool: str, proxy_url: str) -> Dict[str, Any]:
-        """Add a proxy URL to a named pool (created if new) in settings.json —
-        validated, deduped, backed up, atomic. Credentials are masked in the
+        """Add a proxy URL to a named pool (created if new) in settings.json.
+        Validated, deduped, backed up, atomic. Credentials are masked in the
         response. Assign it to accounts via update_account(proxy="pool:<name>")
         or a direct URL."""
         if not pool or not pool.strip():
@@ -138,11 +139,11 @@ def register_proxy_tools(server, ctx: Ctx) -> None:
                    message=f"Added to pool '{pool}'. Assign with "
                            f"update_account(account, proxy=\"pool:{pool}\").")
 
-    @server.tool()
+    @server.tool(annotations=LOCAL_DESTRUCTIVE)
     @guard
     async def remove_proxy(pool: str, proxy_url: str, confirm: bool = False) -> Dict[str, Any]:
         """Remove a proxy URL from a pool. Requires confirm=true. The response
-        lists accounts still assigned pool:<name> — emptying a referenced pool
+        lists accounts still assigned pool:<name>. Emptying a referenced pool
         is allowed but reported (those accounts fall back to no proxy)."""
         if not confirm:
             raise ToolError("remove_proxy requires confirm=true.")
@@ -163,15 +164,15 @@ def register_proxy_tools(server, ctx: Ctx) -> None:
         return ok_(pool=pool, removed=True, pools=_pools_snapshot(ctx),
                    affected_accounts=affected)
 
-    @server.tool()
+    @server.tool(annotations=READ_ONLY_FROM_X)
     @guard
     async def test_proxy(account: Optional[str] = None,
                          proxy_url: Optional[str] = None) -> Dict[str, Any]:
         """Probe a proxy with a throwaway browser: resolves the effective proxy
         (explicit proxy_url wins; otherwise the account's direct URL or
         pool:<name> assignment), opens an IP-echo page, and reports the egress
-        IP + latency. The probe browser is throwaway and cookieless — never
-        account cookies or the warm session pool — but startup performs an
+        IP + latency. The probe browser is throwaway and cookieless, never
+        account cookies or the warm session pool, but startup performs an
         anonymous x.com/home load before the IP-echo fetch, so latency_ms
         includes browser boot. With a round_robin pool, probing via `account`
         advances the pool's rotation cursor. Credentials masked in the
