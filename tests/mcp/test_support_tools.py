@@ -23,6 +23,32 @@ async def make_draft(server, account="acc1", text="draft me"):
 
 
 @pytest.mark.asyncio
+async def test_health_surfaces_corrupt_settings(make_config_loader, drafts_path,
+                                                queue_store, tmp_path):
+    """Corrupt-on-disk config: the loader records the parse error and health
+    reports it (settings_error) instead of silently serving empty settings."""
+    from xuse.mcp.drafts import DraftStore
+    from xuse.mcp.server import create_server
+    from xuse.mcp.sessions import SessionPool
+
+    (tmp_path / "settings.json").write_text("{corrupt json", encoding="utf-8")
+    (tmp_path / "accounts.json").write_text(
+        '[{"account_id": "acc1", "is_active": true}]', encoding="utf-8")
+    from xuse.core.config_loader import ConfigLoader
+    loader = ConfigLoader(settings_file=tmp_path / "settings.json",
+                          accounts_file=tmp_path / "accounts.json")
+    server = create_server(
+        config_loader=loader,
+        session_pool=SessionPool(loader, browser_factory=lambda d: None),
+        draft_store=DraftStore(drafts_path), queue_store=queue_store)
+    result = await call_tool(server, "get_account_health", {"account": "acc1"})
+    assert result["ok"] is True
+    assert "settings_error" in result["config"]
+    assert "corrupt" in result["config"]["settings_error"].lower() or \
+           "parse" in result["config"]["settings_error"].lower()
+
+
+@pytest.mark.asyncio
 async def test_list_drafts_newest_first_and_filter(mcp_server):
     await make_draft(mcp_server, text="one")
     second = await make_draft(mcp_server, text="two")

@@ -104,6 +104,13 @@ def register_support_tools(server, ctx: Ctx) -> None:
         except Exception as e:
             config_info["valid"] = False
             config_info["error"] = ex.sanitize_text(e)
+        # Surface corrupt-on-disk config (the loader boots empty on parse
+        # failure and records the reason on these attributes).
+        for attr, key in (("accounts_error", "loader_error"),
+                          ("settings_error", "settings_error")):
+            loader_error = getattr(ctx.config_loader, attr, None)
+            if loader_error:
+                config_info[key] = ex.sanitize_text(loader_error)
         cookies_info: Dict[str, Any]
         if raw.get("cookies"):
             cookies_info = {"configured": True, "valid": True, "problems": []}
