@@ -179,8 +179,10 @@ flowchart LR
 
 ### 6.3 Later Phases
 
-- **Phase 2 (v2.1):** FastAPI dashboard over the existing `data/metrics/*.json` and JSONL event logs, draft-approval UI, official Docker image.
-- **Phase 3 (v2.2+):** persona presets, plugin system, selector self-healing smoke tests in CI, Prometheus metrics.
+- **Phase 2:** FastAPI dashboard over the existing `data/metrics/*.json` and JSONL event logs, draft-approval UI, official Docker image.
+- **Phase 3:** persona presets, plugin system, selector self-healing smoke tests in CI, Prometheus metrics.
+
+Version numbers are deliberately left off both. See [ROADMAP.md](ROADMAP.md) for the current ordering.
 
 ## 7. Design Decisions and Trade-offs
 

@@ -51,8 +51,7 @@ The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip 
 - [x] Official MCP Registry wiring: `server.json` at the repo root plus the `mcp-name` ownership marker in the README, published automatically by the `mcp-registry` job in `publish.yml` (GitHub OIDC, no secret, version taken from the release tag)
 - [x] First registry publish, shipped with v2.3.1. The record is live under `io.github.ihuzaifashoukat/x-use`, and every future release republishes it automatically
 - [x] PulseMCP, no submission needed. It ingests the official registry daily and processes weekly, so the listing follows from the registry publish above
-- [ ] Community directories, submitted and waiting on review: [punkpeye/awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers/pull/10914) (PR), [mcp.so](https://github.com/chatmcp/mcpso/issues/3301) (issue), [LobeHub](https://github.com/lobehub/lobehub/issues/17601) (issue)
-- [ ] Glama, submit through the form at `glama.ai/mcp/servers/add`. It has not auto-indexed the repo, and the form needs a signed-in account
+- [ ] Community directories, submitted and waiting on review: [punkpeye/awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers/pull/10914) (PR), [mcp.so](https://github.com/chatmcp/mcpso/issues/3301) (issue), [LobeHub](https://github.com/lobehub/lobehub/issues/17601) (issue), Glama (submitted for review)
 - [ ] Smithery is deploy-only now: every listing runs in their cloud. x-use drives Chrome on your own machine with your own cookies, so a hosted deployment is the wrong shape for it. Parked unless local listings come back
 
 ### Compatibility
@@ -61,7 +60,7 @@ The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip 
 
 ---
 
-## Phase 2, v2.1 dashboard & deployment
+## Phase 2, dashboard & deployment
 
 Once the package and MCP layer are solid, make the system observable and deployable.
 
@@ -87,14 +86,14 @@ Turn x-use from a tool into a platform you can extend without forking.
 
 ---
 
-## v2.4, threads & video transcription
+## Phase 4, threads & video transcription
 
 - [ ] Read and post threads (multi-tweet compositions) through the MCP tools
 - [ ] Local video transcription with faster-whisper as an optional `[media]` extra, so agents can read video content keyless
 
 ---
 
-## v2.5, background workflows
+## Phase 5, background workflows
 
 - [ ] Recurring per-account routines (scheduled engagement/content runs without a client attached)
 - [ ] OS scheduler integration via `x-use schedule install`
@@ -124,6 +123,7 @@ x-use follows [semantic versioning](https://semver.org/). Released changes are r
 - **v2.0.0** is a major release because it is a breaking restructure: the package moves to `src/xuse/`, imports change, and the primary entry point becomes the `x-use` CLI.
 - The legacy `python src/main.py` entry point is still present and still works, with a warning pointing to `x-use run`. It is scheduled for removal in **v3.0**; the v2 series keeps it.
 - Config file formats (`config/settings.json`, `config/accounts.json`) have remained compatible across the whole v2 series; any future schema change will ship with a migration note in the release notes.
+- **Phases past the first carry no version number, on purpose.** Only Phase 1 names one, because v2.0 shipped and the phase is a record of what happened. Everything after it is ordering, not scheduling: scope moves between releases, and a number written here today is a number that is wrong in three months. Versions get assigned when a release is cut, and the shipped ones live in [CHANGELOG.md](CHANGELOG.md).
 
 **Cutting a release.** `.github/workflows/publish.yml` publishes to PyPI via trusted
 publishing when a GitHub release is published, and it takes the version from
