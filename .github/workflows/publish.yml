@@ -7,6 +7,10 @@ name: Publish to PyPI
 #
 # Release rule: the version in pyproject.toml must be bumped before tagging;
 # the uploaded files take their version from there.
+#
+# After PyPI, the server is published to the official MCP Registry. That job
+# authenticates with GitHub OIDC, so it needs no secret, and it takes the
+# version from the release tag so server.json cannot drift from the release.
 
 on:
   release:
@@ -56,3 +60,62 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  mcp-registry:
+    name: Publish to MCP Registry
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # GitHub OIDC, so no PAT secret is needed
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Derive version from the release tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing $VERSION to the MCP Registry."
+
+      # The registry validates against the live PyPI record, so wait for the
+      # new version to be queryable and confirm its description carries the
+      # mcp-name marker. PyPI descriptions are immutable per version: a release
+      # built from a README without the marker can never be verified, and
+      # failing here with a clear message beats a cryptic registry rejection.
+      - name: Wait for PyPI and verify the ownership marker
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for attempt in $(seq 1 20); do
+            if curl -sf "https://pypi.org/pypi/x-use-mcp/$VERSION/json" -o pypi.json; then
+              if jq -e '.info.description | contains("mcp-name: io.github.ihuzaifashoukat/x-use")' pypi.json > /dev/null; then
+                echo "PyPI $VERSION is live and carries the mcp-name marker."
+                exit 0
+              fi
+              echo "::error::x-use-mcp $VERSION is on PyPI but its description has no 'mcp-name: io.github.ihuzaifashoukat/x-use' marker. The marker lives in README.md and PyPI descriptions cannot be edited after upload, so this release cannot be registered. Add the marker and cut a new version."
+              exit 1
+            fi
+            echo "Attempt $attempt: $VERSION not on PyPI yet, retrying in 15s."
+            sleep 15
+          done
+          echo "::error::x-use-mcp $VERSION never appeared on PyPI after 5 minutes."
+          exit 1
+
+      - name: Sync server.json to the released version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' \
+            server.json > server.tmp && mv server.tmp server.json
+          cat server.json
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to the MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server to the MCP Registry
+        run: ./mcp-publisher publish

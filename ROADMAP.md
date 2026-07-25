@@ -6,13 +6,13 @@ Legend: `[x]` shipped · `[ ]` planned or in progress.
 
 ---
 
-## Phase 1, v2.0 "x-use" relaunch (nearly complete, the repo rename and MCP directory submissions remain)
+## Phase 1, v2.0 "x-use" relaunch (complete bar the directory listings)
 
 The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip install x-use-mcp`, a guided init, and first-class MCP support, without rewriting the engine.
 
 ### Rebrand & packaging
 
-- [ ] Rename the GitHub repository `twitter-automation-ai` → `x-use` (stars, forks, and old URLs are preserved by GitHub redirects)
+- [x] Rename the GitHub repository `twitter-automation-ai` → `x-use` (stars, forks, and old URLs are preserved by GitHub redirects)
 - [x] Add `pyproject.toml` and move the codebase into a src-layout package: `src/xuse/` (`xuse/core`, `xuse/features`, `xuse/utils`, `xuse/models`), a structural move, not a rewrite; existing engine logic carries over
 - [x] Raise the Python floor to 3.10+
 - [x] Publish to PyPI as `x-use-mcp` (the bare `x-use` name was rejected by PyPI as too similar to an existing `xuse` project)
@@ -48,7 +48,9 @@ The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip 
 - [x] Ship `config/accounts.example.json` and stop tracking `config/accounts.json`; tighten `.gitignore` around cookies and `.env`
 - [x] README relaunch: hero, 3-step quick start (one-line installer → `x-use init` → paste the MCP snippet into your client config), comparison with API-based alternatives, demo GIF
 - [x] Public `ARCHITECTURE.md` and `docs/BEST_PRACTICES.md` (including a responsible-use section)
-- [ ] Submit to MCP directories (Smithery, LobeHub, community MCP lists) so `x-use` is discoverable where people look for MCP servers
+- [x] Official MCP Registry wiring: `server.json` at the repo root plus the `mcp-name` ownership marker in the README, published automatically by the `mcp-registry` job in `publish.yml` (GitHub OIDC, no secret, version taken from the release tag)
+- [ ] First registry publish, lands with the next release. PyPI descriptions are immutable per version and 2.3.0 shipped before the marker existed, so verification needs 2.3.1 or later
+- [ ] Submit to the community directories (Smithery, LobeHub, mcp.so, PulseMCP, a PR to `punkpeye/awesome-mcp-servers`). Glama auto-indexes public repos, so that listing only needs claiming
 
 ### Compatibility
 
