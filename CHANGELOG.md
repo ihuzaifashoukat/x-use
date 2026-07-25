@@ -8,39 +8,39 @@ project follows [semantic versioning](https://semver.org/). See
 
 ---
 
-## [2.3.0] — 2026-07-25
+## [2.3.0], 2026-07-25
 
 Agent-native media, personas, composite draft staging, and proxy pool management, followed
 by a hardening wave driven by live testing against a real X account. **25 → 32 MCP tools.**
 
 ### Added
 
-- **`get_tweet(account, tweet_url, include_images=true)`** — read-only fetch of a single
+- **`get_tweet(account, tweet_url, include_images=true)`**, read-only fetch of a single
   tweet: text, author, like/retweet/reply/view counts, typed media, and the account persona.
-- **Typed media on scraped tweets** — `ScrapedTweet.media` carries photos with alt text
+- **Typed media on scraped tweets**, `ScrapedTweet.media` carries photos with alt text
   (`tweetPhoto`) and video posters (`videoPlayer`), deduped by URL, with avatars excluded.
-- **Image pipeline** — photos are returned to vision-capable clients as MCP `ImageContent`
+- **Image pipeline**, photos are returned to vision-capable clients as MCP `ImageContent`
   alongside the JSON envelope. Fetches are restricted to `*.twimg.com`, capped at 8 MB with
   a 5 s timeout, and re-encoded with Pillow to JPEG ≤1024 px. Any failure degrades to
   URL-only and never errors the tool. Adds Pillow as a dependency.
-- **`include_images` on `search_tweets` and `prepare_reply`** — opt-in on search (first photo
+- **`include_images` on `search_tweets` and `prepare_reply`**, opt-in on search (first photo
   of up to 5 tweets), on by default for single-tweet reads.
-- **Freeform `persona` per account** — set through `add_account` / `update_account`, readable
+- **Freeform `persona` per account**, set through `add_account` / `update_account`, readable
   via `get_account`, and prepended to reply and post prompts when present.
-- **Composite draft-only tools** — `research_and_stage(account, keywords, max_items)` runs
+- **Composite draft-only tools**, `research_and_stage(account, keywords, max_items)` runs
   per-keyword search, dedupes by tweet id, applies a keyless relevance heuristic, sorts by
   like count, and stages persona-aware reply drafts; `draft_post_variations(account, topic,
   count)` stages N persona-aware post drafts. Both refuse paused accounts.
-- **Proxy pool management over MCP** — `list_proxies`, `add_proxy`, `remove_proxy`,
+- **Proxy pool management over MCP**, `list_proxies`, `add_proxy`, `remove_proxy`,
   `test_proxy`. Members are masked in every response, and `settings.json` writes are
   validated, backed up, and replaced atomically.
-- **Bundled agent skills pack** — 5 `SKILL.md` files shipped in the wheel as package data,
+- **Bundled agent skills pack**, 5 `SKILL.md` files shipped in the wheel as package data,
   installed by `x-use skills install [--force]` (never overwrites without `--force`) and
   offered at the end of `x-use init`. `x-use skills list` enumerates them.
-- **Claude plugin marketplace** — `plugins/x-use/`, kept byte-identical to the shipped skills
+- **Claude plugin marketplace**, `plugins/x-use/`, kept byte-identical to the shipped skills
   pack by `scripts/sync_skills.py` and a CI drift guard.
 - **Persona starter presets** under `presets/personas/`.
-- **Documentation** — `docs/MCP_GUIDE.md` (full 32-tool reference) and
+- **Documentation**, `docs/MCP_GUIDE.md` (full 32-tool reference) and
   `docs/SETUP_PROMPT.md` (one-prompt setup).
 - **`get_account_health`** now surfaces corrupt-on-disk `settings.json` / `accounts.json`
   parse errors instead of silently reporting healthy.
@@ -52,7 +52,7 @@ by a hardening wave driven by live testing against a real X account. **25 → 32
 - An empty completion with `finish_reason="length"` is now retried once at
   `max(2 × max_tokens, 1200)` instead of failing.
 - Preset `max_tokens` pins raised to match.
-- The cookie handshake no longer performs a post-cookie refresh — it was redundant, and
+- The cookie handshake no longer performs a post-cookie refresh, it was redundant, and
   dropping it removes one full page load from every cold start.
 
 ### Fixed
@@ -63,7 +63,7 @@ by a hardening wave driven by live testing against a real X account. **25 → 32
   usernames and, for token-style URLs (`scheme://TOKEN@host`), the whole credential.
 - **Mask userinfo containing `/`, whitespace, or a second `@`.** The regex introduced with
   the masking work above could not match those characters, so `http://user:pa/ss@host` was
-  emitted **completely unmasked** and `http://user:p@ss@host` leaked its tail — reachable
+  emitted **completely unmasked** and `http://user:p@ss@host` leaked its tail, reachable
   through `list_proxies`, `get_account`, and any proxy error message, because
   `validate_proxy_url` accepts all three forms. Masking now scans the URL authority directly
   rather than pattern-matching it. The same regex had been copied into three modules, so
@@ -97,7 +97,7 @@ by a hardening wave driven by live testing against a real X account. **25 → 32
 - Orphaned cookie copies are cleaned up when a mutation fails.
 - **A failed `add_account`/`update_account` no longer deletes the account's live cookie
   file.** Importing a `cookie_file` overwrites `config/<id>_cookies.json`, and the
-  orphan-cleanup above then unlinked that path on a failed config write — so
+  orphan-cleanup above then unlinked that path on a failed config write, so
   `update_account(cookie_file=…, proxy="bad-url")` returned `ok:false` *and* destroyed a
   working login that is backed up nowhere, while `accounts.json` still referenced it. The
   import now stashes any pre-existing cookie file and restores it on rollback, deleting only
@@ -135,8 +135,8 @@ by a hardening wave driven by live testing against a real X account. **25 → 32
 
 ### Notes
 
-The two most severe fixes in this release — the cookie-file deletion and the userinfo
-masking gap — were regressions introduced *within* this release cycle by the hardening
+The two most severe fixes in this release, the cookie-file deletion and the userinfo
+masking gap, were regressions introduced *within* this release cycle by the hardening
 commits themselves (`3d0c608` and `b150c5e`). Neither ever reached a published version;
 2.2.0 is unaffected. Both are now covered by regression tests
 (`tests/mcp/test_cookie_import_rollback.py`, `tests/utils/test_sanitize_userinfo.py`).
@@ -145,14 +145,14 @@ Test suite: **599 passing**, up from 551, with no network or browser required.
 
 ---
 
-## [2.2.0] — 2026-07-24
+## [2.2.0], 2026-07-24
 
 ### Changed
 
 - **Single OpenAI-compatible LLM client** replaces the gemini/openai/azure provider stack.
   Configure one `llm` block (`api_key`, `base_url`, `model`); the service returns `None`
   when unconfigured rather than failing.
-- Interactive MCP use can now run keyless — the calling agent writes the text via the
+- Interactive MCP use can now run keyless, the calling agent writes the text via the
   `prepare_reply` context tool. The server-side LLM is only needed for `"auto"` text and
   background automation.
 
@@ -162,18 +162,18 @@ Test suite: **599 passing**, up from 551, with no network or browser required.
 
 ---
 
-## [2.1.0] — 2026-07-24
+## [2.1.0], 2026-07-24
 
 Released by version bump; not tagged.
 
 ### Added
 
-- **Account management tools** — `add_account`, `update_account`, `set_account_active`,
+- **Account management tools**, `add_account`, `update_account`, `set_account_active`,
   `remove_account`, with validated, backed-up, atomic writes to `accounts.json`.
-- **Persistent scheduled-action queue** — `queue_post`, `queue_engagement`,
+- **Persistent scheduled-action queue**, `queue_post`, `queue_engagement`,
   `cancel_queued_action`, `process_queue`, plus an opt-in `auto_drain` worker, with
   `not_before` scheduling, jittered pacing, per-action daily caps, and crash recovery.
-- **Support tools** — `list_drafts`, `get_draft`, `reject_draft`, `get_run_status`,
+- **Support tools**, `list_drafts`, `get_draft`, `reject_draft`, `get_run_status`,
   `get_account_health`.
 - Full 24-tool contract test.
 
@@ -184,7 +184,7 @@ Released by version bump; not tagged.
 
 ---
 
-## [2.0.0] — 2026-07-24
+## [2.0.0], 2026-07-24
 
 The **`twitter-automation-ai` → `x-use`** relaunch. Breaking: the package moves to a
 src-layout at `src/xuse/`, imports change, and the primary entry point becomes the `x-use`
@@ -194,7 +194,7 @@ CLI.
 
 - `pyproject.toml` and a src-layout package (`xuse/core`, `xuse/features`, `xuse/utils`,
   `xuse/models`). Published to PyPI as **`x-use-mcp`**.
-- **CLI (Typer)** — `x-use init` (interactive wizard), `x-use run`, `x-use mcp`,
+- **CLI (Typer)**, `x-use init` (interactive wizard), `x-use run`, `x-use mcp`,
   `x-use doctor`.
 - **MCP server over stdio** on the official MCP Python SDK, with `list_accounts`,
   `post_tweet`, `generate_and_post`, `search_tweets`, `reply_to_tweet`, `engage`,

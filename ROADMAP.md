@@ -1,53 +1,53 @@
 # Roadmap
 
-**twitter-automation-ai is becoming `x-use`** — browser-native AI agents for X (Twitter): multi-account, MCP-ready, no API keys required. The engine you know today (Selenium + LLM orchestration, per-account configs, proxies, metrics) stays the foundation. What changes in v2 is how you use it: an installable Python package, a proper CLI with a setup wizard, and an MCP server so Claude Desktop, Claude Code, Cursor, and other MCP clients can drive your X accounts directly. This roadmap is open to input — if you want to influence priorities, propose a tool, or challenge a decision, open an issue or start a discussion.
+**twitter-automation-ai is becoming `x-use`**, browser-native AI agents for X (Twitter): multi-account, MCP-ready, no API keys required. The engine you know today (Selenium + LLM orchestration, per-account configs, proxies, metrics) stays the foundation. What changes in v2 is how you use it: an installable Python package, a proper CLI with a setup wizard, and an MCP server so Claude Desktop, Claude Code, Cursor, and other MCP clients can drive your X accounts directly. This roadmap is open to input, if you want to influence priorities, propose a tool, or challenge a decision, open an issue or start a discussion.
 
 Legend: `[x]` shipped · `[ ]` planned or in progress.
 
 ---
 
-## Phase 1 — v2.0 "x-use" relaunch (nearly complete — the repo rename and MCP directory submissions remain)
+## Phase 1, v2.0 "x-use" relaunch (nearly complete, the repo rename and MCP directory submissions remain)
 
-The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip install x-use-mcp`, a guided init, and first-class MCP support — without rewriting the engine.
+The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip install x-use-mcp`, a guided init, and first-class MCP support, without rewriting the engine.
 
 ### Rebrand & packaging
 
 - [ ] Rename the GitHub repository `twitter-automation-ai` → `x-use` (stars, forks, and old URLs are preserved by GitHub redirects)
-- [x] Add `pyproject.toml` and move the codebase into a src-layout package: `src/xuse/` (`xuse/core`, `xuse/features`, `xuse/utils`, `xuse/models`) — a structural move, not a rewrite; existing engine logic carries over
+- [x] Add `pyproject.toml` and move the codebase into a src-layout package: `src/xuse/` (`xuse/core`, `xuse/features`, `xuse/utils`, `xuse/models`), a structural move, not a rewrite; existing engine logic carries over
 - [x] Raise the Python floor to 3.10+
 - [x] Publish to PyPI as `x-use-mcp` (the bare `x-use` name was rejected by PyPI as too similar to an existing `xuse` project)
 
 ### CLI (Typer)
 
-- [x] `x-use init` — interactive wizard: add accounts, import cookies, set LLM keys, pick a starting preset (the existing `presets/settings/` and `presets/accounts/` templates become wizard choices)
-- [x] `x-use run [--account NAME] [--pipeline ...]` — replaces `python src/main.py` as the way to run automation cycles
-- [x] `x-use mcp` — start the MCP server
-- [x] `x-use doctor` — environment checks: Chrome/driver availability, cookie validity, LLM key configuration, proxy reachability
+- [x] `x-use init`, interactive wizard: add accounts, import cookies, set LLM keys, pick a starting preset (the existing `presets/settings/` and `presets/accounts/` templates become wizard choices)
+- [x] `x-use run [--account NAME] [--pipeline ...]`, replaces `python src/main.py` as the way to run automation cycles
+- [x] `x-use mcp`, start the MCP server
+- [x] `x-use doctor`, environment checks: Chrome/driver availability, cookie validity, LLM key configuration, proxy reachability
 
 ### MCP server (the Phase 1 flagship)
 
-- [x] MCP server over stdio, built on the official MCP Python SDK — works with Claude Desktop, Claude Code, Cursor, and Windsurf out of the box
+- [x] MCP server over stdio, built on the official MCP Python SDK, works with Claude Desktop, Claude Code, Cursor, and Windsurf out of the box
 - [x] Tools wrapping the existing modules:
-  - [x] `list_accounts()` — enumerate configured accounts
-  - [x] `post_tweet(account, text, media?, community?)` — publish via the composer, including community posting
-  - [x] `generate_and_post(account, topic)` — LLM content generation plus publish in one call
-  - [x] `search_tweets(keywords, limit)` — keyword search via the scraper
-  - [x] `reply_to_tweet(account, tweet_url, text | auto)` — manual or LLM-generated replies
-  - [x] `engage(account, keywords, actions, max)` — likes / retweets / replies with per-call caps
-  - [x] `run_cycle(account?, pipelines?)` — trigger a full orchestrator cycle
-  - [x] `get_metrics(account)` — read per-account metrics summaries
-- [x] **Draft / approval mode** — human-in-the-loop safety, on by default for MCP usage: write-tools return a draft object instead of posting; a separate `approve_draft(draft_id)` call executes it. Nothing goes live without an explicit approval unless you deliberately opt out
+  - [x] `list_accounts()`, enumerate configured accounts
+  - [x] `post_tweet(account, text, media?, community?)`, publish via the composer, including community posting
+  - [x] `generate_and_post(account, topic)`, LLM content generation plus publish in one call
+  - [x] `search_tweets(keywords, limit)`, keyword search via the scraper
+  - [x] `reply_to_tweet(account, tweet_url, text | auto)`, manual or LLM-generated replies
+  - [x] `engage(account, keywords, actions, max)`, likes / retweets / replies with per-call caps
+  - [x] `run_cycle(account?, pipelines?)`, trigger a full orchestrator cycle
+  - [x] `get_metrics(account)`, read per-account metrics summaries
+- [x] **Draft / approval mode**, human-in-the-loop safety, on by default for MCP usage: write-tools return a draft object instead of posting; a separate `approve_draft(draft_id)` call executes it. Nothing goes live without an explicit approval unless you deliberately opt out
 - [x] Lazy per-account browser session pool with idle timeout, so MCP calls stay fast and never hang the client
-- [x] **v2.1 MCP expansion** — account management tools (add/update/pause/remove with validated atomic writes), a persistent scheduled-action queue (`queue_post`, `queue_engagement`, `process_queue`, opt-in `auto_drain` worker) with jittered pacing and daily caps, and support tools (draft listing/rejection, run status, account health)
-- [x] **v2.2 agent-native LLM** — one OpenAI-compatible client (`llm`: api_key/base_url/model) replaces the gemini/openai/azure provider stack; interactive MCP use runs keyless (the calling agent writes the text — new `prepare_reply` context tool), server-side LLM only powers `"auto"` text and background automation
-- [x] **v2.3 agent media + skills** *(released — see [CHANGELOG.md](CHANGELOG.md))* — typed media on tweets with photos returned as MCP `ImageContent` on the read tools (new `get_tweet`; `prepare_reply`/`search_tweets` gain `include_images`), freeform account `persona`, composite draft-staging tools (`research_and_stage`, `draft_post_variations`), proxy pool management tools (`list_proxies`/`add_proxy`/`remove_proxy`/`test_proxy`), and a bundled 5-skill agent pack with a plugin marketplace plus one-prompt setup (`docs/SETUP_PROMPT.md`). 25 → 32 tools
-- [x] **v2.3 hardening wave** — a pass driven by live testing against a real X account and a full-surface audit: whole-userinfo credential masking everywhere, queue cancel/crash-recovery/paused-drain fixes, cancel-safe session lifecycle, config-write and metrics atomicity, LLM empty-completion retries with a 1200-token default, and engine truthfulness (no action reports success without confirmation)
+- [x] **v2.1 MCP expansion**, account management tools (add/update/pause/remove with validated atomic writes), a persistent scheduled-action queue (`queue_post`, `queue_engagement`, `process_queue`, opt-in `auto_drain` worker) with jittered pacing and daily caps, and support tools (draft listing/rejection, run status, account health)
+- [x] **v2.2 agent-native LLM**, one OpenAI-compatible client (`llm`: api_key/base_url/model) replaces the gemini/openai/azure provider stack; interactive MCP use runs keyless (the calling agent writes the text, new `prepare_reply` context tool), server-side LLM only powers `"auto"` text and background automation
+- [x] **v2.3 agent media + skills** *(released, see [CHANGELOG.md](CHANGELOG.md))*, typed media on tweets with photos returned as MCP `ImageContent` on the read tools (new `get_tweet`; `prepare_reply`/`search_tweets` gain `include_images`), freeform account `persona`, composite draft-staging tools (`research_and_stage`, `draft_post_variations`), proxy pool management tools (`list_proxies`/`add_proxy`/`remove_proxy`/`test_proxy`), and a bundled 5-skill agent pack with a plugin marketplace plus one-prompt setup (`docs/SETUP_PROMPT.md`). 25 → 32 tools
+- [x] **v2.3 hardening wave**, a pass driven by live testing against a real X account and a full-surface audit: whole-userinfo credential masking everywhere, queue cancel/crash-recovery/paused-drain fixes, cancel-safe session lifecycle, config-write and metrics atomicity, LLM empty-completion retries with a 1200-token default, and engine truthfulness (no action reports success without confirmation)
 
 ### Config hygiene & docs
 
 - [x] Ship `config/accounts.example.json` and stop tracking `config/accounts.json`; tighten `.gitignore` around cookies and `.env`
 - [x] README relaunch: hero, 3-step quick start (one-line installer → `x-use init` → paste the MCP snippet into your client config), comparison with API-based alternatives, demo GIF
-- [x] Public `ARCHITECTURE.md` and `BEST_PRACTICES.md` (including a responsible-use section)
+- [x] Public `ARCHITECTURE.md` and `docs/BEST_PRACTICES.md` (including a responsible-use section)
 - [ ] Submit to MCP directories (Smithery, LobeHub, community MCP lists) so `x-use` is discoverable where people look for MCP servers
 
 ### Compatibility
@@ -56,13 +56,13 @@ The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip 
 
 ---
 
-## Phase 2 — v2.1 dashboard & deployment
+## Phase 2, v2.1 dashboard & deployment
 
 Once the package and MCP layer are solid, make the system observable and deployable.
 
 - [ ] FastAPI backend serving the data the engine already writes: `data/metrics/<account_id>.json` summaries and `logs/accounts/<account_id>.jsonl` event logs
 - [ ] Lightweight web UI:
-  - [ ] Draft-approval queue — review, edit, approve, or reject pending drafts from the browser
+  - [ ] Draft-approval queue, review, edit, approve, or reject pending drafts from the browser
   - [ ] Per-account metrics charts (posts, replies, retweets, quote tweets, likes, errors over time)
   - [ ] Account status overview (last run, cookie health, active pipelines)
 - [ ] Official Docker image and a `docker compose` setup for running the engine, MCP server, and dashboard together
@@ -70,26 +70,26 @@ Once the package and MCP layer are solid, make the system observable and deploya
 
 ---
 
-## Phase 3 — extensibility
+## Phase 3, extensibility
 
 Turn x-use from a tool into a platform you can extend without forking.
 
-- [ ] **Persona preset library** — curated, shareable persona/preset bundles (tone, cadence, engagement style) building on today's `presets/` system; contributed personas welcome
-- [ ] **Plugin system** — register custom pipelines and MCP tools from your own package, so niche workflows don't need to live in core
-- [ ] **Selector self-healing** — headless smoke tests in CI that detect X UI selector breakage early, plus fallback selector strategies, so UI changes get caught by automation instead of by your accounts
-- [ ] **Prometheus-compatible metrics endpoint** — scrape run counts, action outcomes, and error rates into Grafana or any Prometheus stack
+- [ ] **Persona preset library**, curated, shareable persona/preset bundles (tone, cadence, engagement style) building on today's `presets/` system; contributed personas welcome
+- [ ] **Plugin system**, register custom pipelines and MCP tools from your own package, so niche workflows don't need to live in core
+- [ ] **Selector self-healing**, headless smoke tests in CI that detect X UI selector breakage early, plus fallback selector strategies, so UI changes get caught by automation instead of by your accounts
+- [ ] **Prometheus-compatible metrics endpoint**, scrape run counts, action outcomes, and error rates into Grafana or any Prometheus stack
 - [ ] Community persona and preset contributions folded into releases on a regular cadence
 
 ---
 
-## v2.4 — threads & video transcription
+## v2.4, threads & video transcription
 
 - [ ] Read and post threads (multi-tweet compositions) through the MCP tools
 - [ ] Local video transcription with faster-whisper as an optional `[media]` extra, so agents can read video content keyless
 
 ---
 
-## v2.5 — background workflows
+## v2.5, background workflows
 
 - [ ] Recurring per-account routines (scheduled engagement/content runs without a client attached)
 - [ ] OS scheduler integration via `x-use schedule install`
@@ -101,13 +101,13 @@ Turn x-use from a tool into a platform you can extend without forking.
 
 The fastest way to help right now:
 
-- **Selector fixes.** X changes its DOM regularly. PRs that update or harden selectors in `src/xuse/features/scraper/` and `src/xuse/features/publisher/` are the most valuable contributions this project gets — especially with a DOM snippet in the PR description showing what changed.
-- **Presets.** New account presets (`presets/accounts/`) and settings presets (`presets/settings/`) for real-world use cases — a good preset saves every new user an hour of configuration.
+- **Selector fixes.** X changes its DOM regularly. PRs that update or harden selectors in `src/xuse/features/scraper/` and `src/xuse/features/publisher/` are the most valuable contributions this project gets, especially with a DOM snippet in the PR description showing what changed.
+- **Presets.** New account presets (`presets/accounts/`) and settings presets (`presets/settings/`) for real-world use cases, a good preset saves every new user an hour of configuration.
 - **Docs.** Clarify setup steps, add troubleshooting entries, improve `docs/CONFIG_REFERENCE.md`. If something confused you during setup, it confuses others too.
 - **MCP tool ideas.** Open an issue describing the tool call you wish existed (name, inputs, expected behavior). The Phase 1 tool list above is a starting set, not a ceiling.
 - **Testing.** pytest coverage for pure logic (config merging, dedup keys, LLM JSON parsing) and, once the MCP layer lands, tool contract tests.
 
-Look for issues labeled `good first issue` and `help wanted`. Before starting a large change, open an issue first so we can agree on the approach — see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
+Look for issues labeled `good first issue` and `help wanted`. Before starting a large change, open an issue first so we can agree on the approach, see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 
 ---
 
@@ -128,4 +128,4 @@ previous version number.
 
 ---
 
-*This roadmap reflects current intent, not a contract — priorities shift with feedback. Comment on the tracking issues for each phase, or open a discussion to propose something new.*
+*This roadmap reflects current intent, not a contract, priorities shift with feedback. Comment on the tracking issues for each phase, or open a discussion to propose something new.*

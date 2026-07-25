@@ -1,7 +1,7 @@
 # x-use MCP guide
 
 x-use is an MCP server that drives a real, logged-in browser on X (Twitter):
-post, reply, search, like, retweet, schedule, and manage multiple accounts —
+post, reply, search, like, retweet, schedule, and manage multiple accounts,
 no X API key required. This is the full reference for its 32 tools:
 signatures, behavior, and gotchas.
 
@@ -11,7 +11,7 @@ signatures, behavior, and gotchas.
    `generate_and_post`, `reply_to_tweet`, `engage`, `run_cycle`,
    `approve_draft`) build the full payload, store a draft, and change nothing
    on X. Only `approve_draft(draft_id)` executes a draft. `run_cycle` is the
-   legacy batch path — it executes immediately and is not draft-gated. Opt out
+   legacy batch path, it executes immediately and is not draft-gated. Opt out
    with `"mcp": { "draft_mode": false }` in `config/settings.json`.
 2. **Queue gate.** `queue_post` / `queue_engagement` only store work. Nothing
    runs until an explicit `process_queue` call (or the opt-in `auto_drain`
@@ -63,25 +63,25 @@ printed (for example `venv/bin/x-use` or `venv\Scripts\x-use.exe`). Verify
 the connection by asking the client to run `list_accounts`.
 
 Zero-knowledge alternative: paste the prompt from
-[SETUP_PROMPT.md](SETUP_PROMPT.md) into your AI client — it installs,
+[SETUP_PROMPT.md](SETUP_PROMPT.md) into your AI client, it installs,
 registers, verifies, and interviews you to configure your account.
 
 ## Conventions
 
 - **Envelopes.** Every tool returns a JSON envelope: `{"ok": true, ...}` on
   success, `{"ok": false, "error": {"type", "message"}}` on failure. On an
-  error envelope, read the message, explain it, and stop — do not retry in a
+  error envelope, read the message, explain it, and stop, do not retry in a
   loop.
 - **Draft flow.** Write tools return a draft; review it, then
   `approve_draft(draft_id)` only what the user explicitly approves and
   `reject_draft(draft_id)` the rest. Drafts persist in `data/drafts.jsonl`.
 - **Queue flow.** `queue_post` / `queue_engagement` store actions with full
   payloads (inspect with `list_queue`); `not_before` (ISO 8601) schedules.
-  `process_queue` is the approval gate — it drains due items with pacing and
+  `process_queue` is the approval gate, it drains due items with pacing and
   daily caps. The queue persists in `data/engagement_queue.jsonl`.
 - **Media.** Read tools return each tweet's typed `media` list (photos with
-  alt text; videos as poster + URL). With `include_images=true` — the default
-  for `get_tweet` and `prepare_reply`, opt-in for `search_tweets` — photos
+  alt text; videos as poster + URL). With `include_images=true`, the default
+  for `get_tweet` and `prepare_reply`, opt-in for `search_tweets`, photos
   also attach as MCP image content so a vision-capable client sees them.
   Bounds: up to 4 photos per tweet; the first image of up to 5 tweets per
   search; re-encoded to JPEG, max 1024px, max 200KB, 5s fetch timeout.
@@ -264,7 +264,7 @@ validated + backed up (config/backups/). Assign with
 ### remove_proxy(pool, proxy_url, confirm=false)
 
 Remove a proxy from a pool. Requires `confirm=true`. Response includes
-`affected_accounts` — accounts still assigned `pool:<name>` (emptying a
+`affected_accounts`, accounts still assigned `pool:<name>` (emptying a
 referenced pool is allowed but reported; those accounts fall back to no proxy).
 
 ### test_proxy(account?, proxy_url?)
@@ -273,7 +273,7 @@ Probe a proxy without risking an account: resolves the effective proxy
 (explicit `proxy_url` wins; otherwise the account's direct URL or `pool:<name>`
 assignment), launches a throwaway, cookieless browser (no account cookies,
 never the warm session) whose startup performs an anonymous x.com/home load
-before the IP-echo fetch — so `latency_ms` includes browser boot — fetches an
+before the IP-echo fetch, so `latency_ms` includes browser boot, fetches an
 IP-echo page, returns `{proxy (masked), egress_ip, latency_ms}`. With a
 `round_robin` pool, probing via `account` advances the pool's rotation
 cursor. Failure returns a credential-masked error envelope.
@@ -281,7 +281,7 @@ cursor. Failure returns a credential-masked error envelope.
 ## Personas
 
 Each account has an optional freeform `persona` (markdown, max 4000 chars):
-who the account is and how it engages — voice, topics, reply style,
+who the account is and how it engages, voice, topics, reply style,
 avoid-list, an example reply or two. Set it with
 `add_account(..., persona=...)` or `update_account(account, persona=...)`;
 pass an empty string to clear it. `get_tweet` and `prepare_reply` return it
@@ -298,12 +298,12 @@ dictate) via `update_account`.
 Five agent skills ship inside the package and install into both Claude Code
 and Codex skill directories:
 
-- **x-use** — overview and routing: tool groups, the two safety gates,
+- **x-use**, overview and routing: tool groups, the two safety gates,
   conventions.
-- **x-use-setup** — zero-knowledge onboarding interview.
-- **x-use-engage** — research + reply workflow (draft-first).
-- **x-use-content** — content creation and staging.
-- **x-use-review** — daily digest: health, metrics, drafts, queue.
+- **x-use-setup**, zero-knowledge onboarding interview.
+- **x-use-engage**, research + reply workflow (draft-first).
+- **x-use-content**, content creation and staging.
+- **x-use-review**, daily digest: health, metrics, drafts, queue.
 
 ```bash
 x-use skills install   # copy the five skills into the client skill dirs

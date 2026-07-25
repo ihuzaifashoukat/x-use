@@ -77,7 +77,7 @@ If `x-use` is not on your client's PATH, use the full path the installer printed
 
 ## MCP tools
 
-32 tools in six groups — full reference with signatures and examples: [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md). Two safety gates: write tools run in draft mode by default (review, then `approve_draft`), and the queue only stores work until an explicit `process_queue` call.
+32 tools in six groups, full reference with signatures and examples: [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md). Two safety gates: write tools run in draft mode by default (review, then `approve_draft`), and the queue only stores work until an explicit `process_queue` call.
 
 | Group | Tools |
 |---|---|
@@ -96,7 +96,7 @@ Drafts persist in `data/drafts.jsonl`; the queue persists in `data/engagement_qu
 
 `x-use init` (or `x-use skills install`) installs five agent skills for Claude Code and Codex: **x-use** (overview), **x-use-setup** (zero-knowledge onboarding interview), **x-use-engage** (research + reply workflow), **x-use-content** (content creation), **x-use-review** (daily digest). Claude Code users can also install from the marketplace: `/plugin marketplace add ihuzaifashoukat/x-use`.
 
-**Zero-knowledge setup:** paste the prompt from [docs/SETUP_PROMPT.md](docs/SETUP_PROMPT.md) into your AI client — it installs, registers, verifies, and interviews you to configure your account.
+**Zero-knowledge setup:** paste the prompt from [docs/SETUP_PROMPT.md](docs/SETUP_PROMPT.md) into your AI client, it installs, registers, verifies, and interviews you to configure your account.
 
 ## CLI
 
@@ -148,13 +148,13 @@ Full schema: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md). Starter templ
 
 ## Recommended proxy provider
 
-Multi-account automation needs quality residential proxies — X's per-IP detection kills datacenter IPs fast. We use and recommend ScrapingAnt (5% off with code `TWI_AUTO`):
+Multi-account automation needs quality residential proxies, X's per-IP detection kills datacenter IPs fast. We use and recommend ScrapingAnt (5% off with code `TWI_AUTO`):
 
 <a href="https://scrapingant.com/residential-proxies?ref=mdkzote"><img src="https://i.ibb.co/mrK3tv4g/Screenshot-2026-05-08-at-14-17-29.png" alt="ScrapingAnt Residential Proxies" width="250" /></a>
 
 ## Responsible use
 
-Browser automation of X carries real account risk. Read [BEST_PRACTICES.md](BEST_PRACTICES.md) before running anything: it covers conservative rate limits (the shipped defaults), account warm-up, relevance filters, cookie and credential hygiene, and X ToS considerations. Keep delays high, caps low, and draft mode on.
+Browser automation of X carries real account risk. Read [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md) before running anything: it covers conservative rate limits (the shipped defaults), account warm-up, relevance filters, cookie and credential hygiene, and X ToS considerations. Keep delays high, caps low, and draft mode on.
 
 ## Development
 
