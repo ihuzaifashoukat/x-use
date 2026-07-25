@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "x-use-mcp"
-version = "2.3.0"
+version = "2.3.1"
 description = "Browser-native AI agents for X (Twitter): multi-account, MCP-ready, no API keys required."
 readme = "README.md"
 requires-python = ">=3.10"

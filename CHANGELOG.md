@@ -8,6 +8,39 @@ project follows [semantic versioning](https://semver.org/). See
 
 ---
 
+## [2.3.1], 2026-07-25
+
+Packaging, documentation, and release plumbing. No changes to `src/`, so behaviour is
+identical to 2.3.0. The reason this exists as a release rather than a docs commit: the
+official MCP Registry verifies PyPI ownership by reading the `mcp-name` marker out of the
+package description, PyPI descriptions are immutable once uploaded, and 2.3.0 shipped
+before the marker existed. Registration needs a version that carries it.
+
+### Added
+
+- `server.json` at the repo root, the manifest for the official MCP Registry.
+- An `mcp-name` ownership marker in the README, which flows into the PyPI description
+  because `pyproject.toml` sets `readme = "README.md"`.
+- An `mcp-registry` job in `publish.yml` that publishes to the registry after PyPI on every
+  release. It authenticates with GitHub OIDC so no secret is stored, rewrites the
+  `server.json` version from the release tag so the manifest cannot drift, and refuses to
+  publish unless the released PyPI description actually carries the marker.
+
+### Changed
+
+- `BEST_PRACTICES.md` moved to `docs/BEST_PRACTICES.md` and was rewritten for 2.3. It had
+  drifted badly: it referenced `src/main.py` and pre-src-layout module paths, described the
+  gemini/openai/azure provider stack that 2.2 replaced with a single OpenAI-compatible
+  client, said LLM keys could not come from the environment when `.env` now takes precedence
+  over `settings.json`, and listed draft mode and `x-use doctor` as planned when both had
+  shipped. Now covers the queue gate, the proxy MCP tools, cookie expiry checks, and the
+  percent-encoding rule for proxy credentials.
+- GitHub Actions bumped off the deprecated Node 20 runtime: `checkout` v4 to v7,
+  `setup-python` v5 to v7, `upload-artifact` v4 to v7, `download-artifact` v4 to v8.
+- Em dashes removed throughout the user-facing documentation.
+
+---
+
 ## [2.3.0], 2026-07-25
 
 Agent-native media, personas, composite draft staging, and proxy pool management, followed
@@ -213,7 +246,8 @@ CLI.
 
 - `python src/main.py` still works, with a warning pointing to `x-use run`.
 
-[2.3.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.2.0...HEAD
+[2.3.1]: https://github.com/ihuzaifashoukat/x-use/compare/v2.3.0...v2.3.1
+[2.3.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.0.0...v2.2.0
 [2.1.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.0.0...v2.2.0
 [2.0.0]: https://github.com/ihuzaifashoukat/x-use/releases/tag/v2.0.0
