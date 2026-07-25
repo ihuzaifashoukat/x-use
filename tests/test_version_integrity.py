@@ -43,6 +43,24 @@ def test_server_json_matches_the_package_version():
         assert package["version"] == xuse.__version__, package["identifier"]
 
 
+def test_plugin_manifest_matches_the_package_version():
+    """The marketplace plugin is a second published surface with its own version
+    field. It sat at 2.3.0 against a 2.4.1 package, which is the same drift
+    server.json was already pinned against, one file over."""
+    manifest = read_json("plugins/x-use/.claude-plugin/plugin.json")
+    assert manifest["version"] == xuse.__version__
+
+
+def test_published_manifests_stay_ascii():
+    """These strings are rendered by MCP directories, and em dashes mojibake in
+    consumers that assume latin-1."""
+    for name in ("server.json", "marketplace.json",
+                 "plugins/x-use/.claude-plugin/plugin.json"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        bad = sorted({c for c in text if ord(c) > 127})
+        assert not bad, f"{name} contains non-ASCII: {bad}"
+
+
 def test_changelog_documents_the_current_version():
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert f"## [{xuse.__version__}]" in changelog, \
