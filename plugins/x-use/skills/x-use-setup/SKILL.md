@@ -1,6 +1,6 @@
 ---
 name: x-use-setup
-description: Zero-knowledge onboarding for x-use — verify the install, register the MCP server, then interview the user to configure their first X account (cookies, niche, keywords, persona). Use when x-use is not yet configured, when adding an account, or when the user asks to get started.
+description: Zero-knowledge onboarding for x-use: verify the install, register the MCP server, then interview the user to configure their first X account (cookies, niche, keywords, persona). Use when x-use is not yet configured, when adding an account, or when the user asks to get started.
 ---
 
 # x-use setup
@@ -32,7 +32,7 @@ Ask: "What should this account be called (a short id like `main` or
 
 Then call `add_account(account_id, cookie_file=<path>)`. The file is
 validated and copied server-side; cookie values never pass through the chat.
-Verify with `get_account_health(account)` — cookie status should be valid.
+Verify with `get_account_health(account)`; cookie status should be valid.
 
 ## 3. Niche and keywords
 
@@ -52,7 +52,7 @@ replies.
 
 ## 5. Optional extras (only if relevant)
 
-- Multi-account: repeat from step 2, and ask about proxies — add them with
+- Multi-account: repeat from step 2, and ask about proxies, added with
   `add_proxy(pool, proxy_url)` and assign with
   `update_account(account, proxy="pool:<name>")`.
 - Background automation (unattended `"auto"` text): needs one

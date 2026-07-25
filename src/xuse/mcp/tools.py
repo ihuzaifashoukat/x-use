@@ -276,8 +276,10 @@ def register_tools(server, ctx: Ctx) -> None:
     from .accounts_tools import register_account_tools
     from .composite_tools import register_composite_tools
     from .engage import register_engage_tool
+    from .prompts import register_prompts
     from .proxy_tools import register_proxy_tools
     from .queue_tools import register_queue_tools
+    from .resources import register_resources
     from .support_tools import register_support_tools
     from .write_tools import register_write_tools
 
@@ -288,3 +290,6 @@ def register_tools(server, ctx: Ctx) -> None:
     register_support_tools(server, ctx)
     register_composite_tools(server, ctx)
     register_proxy_tools(server, ctx)
+    # Non-tool surfaces: workflow prompts and read-only context resources.
+    register_prompts(server, ctx)
+    register_resources(server, ctx)

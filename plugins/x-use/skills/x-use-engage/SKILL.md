@@ -1,6 +1,6 @@
 ---
 name: x-use-engage
-description: Research the user's niche on X and draft persona-voice replies for review — search keywords or profiles, read tweets AND their images, compose replies, stage drafts. Use when the user wants to engage, reply, grow reach, or "find posts worth replying to".
+description: Research the user's niche on X and draft persona-voice replies for review: search keywords or profiles, read tweets AND their images, compose replies, stage drafts. Use when the user wants to engage, reply, grow reach, or "find posts worth replying to".
 ---
 
 # x-use engage
@@ -21,7 +21,7 @@ posts on its own.
    before treating it as theirs.
 3. **Read candidates properly.** For each promising tweet call
    `prepare_reply(account, tweet_url)`. You receive the text, the images
-   (look at them — chart screenshots, memes, and UI shots change what a good
+   (look at them, because chart screenshots, memes, and UI shots change what a good
    reply is), the author's handle, the account's persona, and keywords.
 4. **Filter.** Skip: tweets you can't add value to, pure announcements,
    anything off-persona, and the account's own posts. Keep at most 3-5.
@@ -39,4 +39,4 @@ posts on its own.
 - Never approve on your own initiative. Never batch-approve.
 - If the user wants volume later, suggest `queue_engagement` +
   `process_queue` (same review model, paced, daily caps).
-- No server LLM key? Everything above still works — you are the writer.
+- No server LLM key? Everything above still works. You are the writer.

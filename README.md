@@ -10,6 +10,7 @@ The X API's pricing tiers put write access out of reach for exactly the people w
 
 > x-use is the v2 relaunch of **twitter-automation-ai**. The repository was renamed; old URLs keep redirecting, and stars, forks, and issues came along intact.
 
+[![MCP Badge](https://lobehub.com/badge/mcp/ihuzaifashoukat-x-use)](https://lobehub.com/mcp/ihuzaifashoukat-x-use)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/ihuzaifashoukat/x-use/actions/workflows/ci.yml/badge.svg)](https://github.com/ihuzaifashoukat/x-use/actions/workflows/ci.yml)
@@ -91,6 +92,29 @@ If `x-use` is not on your client's PATH, use the full path the installer printed
 Interactive use needs no LLM key: your MCP client (Claude, Codex, ...) does the thinking, sees tweet images via `get_tweet`/`prepare_reply`, and passes explicit text to the write tools. The optional server-side LLM (`llm` block) only powers the composite tools, `"auto"` text, and background automation.
 
 Drafts persist in `data/drafts.jsonl`; the queue persists in `data/engagement_queue.jsonl`. Both survive restarts.
+
+## MCP prompts and resources
+
+Tools are what the model calls. Prompts and resources are the other two halves of the protocol, and x-use serves both.
+
+**Prompts** are the workflows, usable in any MCP client. The bundled `SKILL.md` files only work in clients that implement Agent Skills; these need no installation and show up wherever your client surfaces prompts.
+
+| Prompt | Arguments | What it does |
+|---|---|---|
+| `research_niche` | `account`, `keywords`, `profiles` | Read-only sweep of keywords and watched profiles, scored shortlist, stages nothing |
+| `draft_replies` | `account`, `tweet_urls`, `lane` | Stage replies in the account's persona, into drafts or the queue |
+| `review_and_publish` | `account` | Review what is staged and publish only what you approve by id |
+| `daily_check` | `account` | Health, metrics, drafts, and queue in one read-only pass |
+| `setup_account` | none | Conversational onboarding from nothing |
+
+**Resources** are read-only context your client can attach without spending a turn. None of them start a browser, and all run the same masking as the tools, so no cookie, password, or proxy credential leaves through them.
+
+| Resource | Type | Contents |
+|---|---|---|
+| `xuse://accounts` | JSON | Every configured account, secrets stripped |
+| `xuse://accounts/{account_id}` | JSON | One account's full masked config |
+| `xuse://accounts/{account_id}/persona` | Markdown | The account's voice. Attach before writing anything as it |
+| `xuse://drafts/pending` | JSON | Everything awaiting approval, with the exact text that would publish |
 
 ## Agent skills
 

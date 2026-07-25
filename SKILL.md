@@ -72,3 +72,27 @@ The server also exposes two non-tool surfaces, both read-only to obtain:
 - Researching and replying in the user's niche → **x-use-engage**
 - Creating and staging original content → **x-use-content**
 - Daily review: metrics, drafts, queue → **x-use-review**
+
+## Getting the workflow skills
+
+This file is the router. The four workflow skills it points at ship inside the
+package:
+
+```bash
+pip install x-use-mcp
+x-use skills install
+```
+
+That writes them to `~/.claude/skills/` and `~/.agents/skills/`, so Claude Code
+and Codex-style agents both pick them up. Claude Code users can install the
+plugin from this repository's marketplace instead.
+
+The server also exposes the same workflows as MCP **prompts** (`research_niche`,
+`draft_replies`, `review_and_publish`, `daily_check`, `setup_account`), which
+need no installation and work in any MCP client, and read-only **resources**
+(`xuse://accounts`, `xuse://accounts/{account_id}/persona`,
+`xuse://drafts/pending`) for context you want attached rather than fetched.
+
+Working from a clone? The canonical skill sources live in
+`src/xuse/skills_pack/<name>/SKILL.md`. Edit those, then run
+`python scripts/sync_skills.py`; this file is generated from them.

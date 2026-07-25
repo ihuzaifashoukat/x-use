@@ -1,13 +1,13 @@
 ---
 name: x-use
-description: Overview and routing for the x-use X (Twitter) automation MCP server — tool groups, the two safety gates, and usage conventions. Use whenever you work with x-use tools or the user mentions their X/Twitter account automation.
+description: Overview and routing for the x-use X (Twitter) automation MCP server: tool groups, the two safety gates, and usage conventions. Use whenever you work with x-use tools or the user mentions their X/Twitter account automation.
 ---
 
 # x-use
 
 x-use is an MCP server that drives a real, logged-in browser on X (Twitter):
 post, reply, search, like, retweet, schedule, and manage multiple accounts.
-It needs no X API key. Interactive use needs no LLM key either — YOU are the
+It needs no X API key. Interactive use needs no LLM key either. YOU are the
 writer; the server drives the browser.
 
 ## The two safety gates (never bypass them)
@@ -15,8 +15,8 @@ writer; the server drives the browser.
 1. **Draft gate.** Write tools (`post_tweet`, `reply_to_tweet`,
    `generate_and_post`, `engage`) return a *draft* by default and change
    nothing on X. Present the draft to the user; only `approve_draft(draft_id)`
-   executes it — and only when the user explicitly says to approve.
-   `run_cycle` is the legacy batch path — it executes immediately and is not
+   executes it, and only when the user explicitly says to approve.
+   `run_cycle` is the legacy batch path: it executes immediately and is not
    draft-gated.
 2. **Queue gate.** `queue_post` / `queue_engagement` only store work. Nothing
    runs until an explicit `process_queue` call (daily caps apply).
@@ -32,18 +32,30 @@ writer; the server drives the browser.
 - **Queue:** `queue_post`, `queue_engagement`, `cancel_queued_action`,
   `process_queue`
 - **Composite (need the server's `llm` block):** `research_and_stage`,
-  `draft_post_variations` — prefer doing this work yourself with the
+  `draft_post_variations`. Prefer doing this work yourself with the
   read-only tools when the user has no LLM key configured
 - **Accounts:** `add_account`, `update_account`, `set_account_active`,
   `remove_account` (mutate config; validated + backed up)
 - **Proxies:** `add_proxy`, `remove_proxy`, `test_proxy` (plus
   `list_proxies` above)
 
+## Beyond tools
+
+The server also exposes two non-tool surfaces, both read-only to obtain:
+
+- **Resources** (context to attach, no browser, no turn spent):
+  `xuse://accounts`, `xuse://accounts/{account_id}`,
+  `xuse://accounts/{account_id}/persona`, `xuse://drafts/pending`.
+  Attach the persona before writing anything as an account.
+- **Prompts** (the same workflows as these skills, for clients without skill
+  support): `research_niche`, `draft_replies`, `review_and_publish`,
+  `daily_check`, `setup_account`.
+
 ## Conventions
 
 - **You write the text.** Always prefer explicit `text` over `"auto"`. Call
   `prepare_reply(account, tweet_url)` first: you get the tweet's text AND its
-  images (as image content — look at them), the account's keywords, and its
+  images (as image content, look at them), the account's keywords, and its
   persona. Follow the persona when composing.
 - **Small batches.** Keep `max_actions` / `limit` small (<= 5) unless the
   user asks for more. X rate-limits aggressively; the server's pacing and

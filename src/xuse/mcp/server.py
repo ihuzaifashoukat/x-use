@@ -39,6 +39,7 @@ from typing import Optional, Union
 
 from mcp.server.fastmcp import FastMCP
 
+from xuse import __version__
 from xuse.core.config_loader import ConfigLoader, PROJECT_ROOT
 from xuse.queue import AutoDrainScheduler, QueueConfig, QueueRunner, QueueStore
 
@@ -191,6 +192,16 @@ def create_server(
             max_actions_per_account=queue_cfg.auto_drain.max_actions_per_account,
         )
     server = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS, lifespan=_lifespan)
+    # FastMCP's constructor takes no `version`, so the low-level server's stays
+    # None and the handshake reports the *SDK* version in serverInfo (clients
+    # and directory scanners were being told x-use was "1.28.1"). The wrapped
+    # Server does accept one; set it directly. Guarded because this reaches
+    # through FastMCP's internals: a future SDK that renames the attribute
+    # should cost us a wrong version string, not a server that will not boot.
+    try:
+        server._mcp_server.version = __version__
+    except Exception:  # pragma: no cover - defensive against SDK churn
+        logger.warning("Could not set the advertised MCP server version.", exc_info=True)
     _tools.register_tools(server, ctx)
     server.xuse_ctx = ctx  # reachable for shutdown hooks and tests
     if scheduler is not None:

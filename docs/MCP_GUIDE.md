@@ -99,6 +99,8 @@ registers, verifies, and interviews you to configure your account.
 
 All 33 tools, grouped as in the README summary table.
 
+The server also serves 5 prompts and 4 resources; see "Prompts and resources" at the end of this document.
+
 **Read-only & status**
 
 ### list_accounts()
@@ -347,3 +349,42 @@ install from the marketplace: `/plugin marketplace add ihuzaifashoukat/x-use`.
 - **Logs.** Per-account JSONL event logs live in
   `logs/accounts/<account_id>.jsonl`; metrics counters in
   `data/metrics/<account_id>.json`.
+
+## Prompts and resources
+
+Tools are model-invoked. Prompts are user-invoked, and resources are client-attached.
+x-use serves all three.
+
+### Prompts
+
+The same workflows as the bundled `SKILL.md` pack, but in the protocol, so they
+work in clients with no Agent Skills support. Every optional argument may be
+left blank; `account` then resolves to the first active configured account.
+
+| Prompt | Arguments |
+|---|---|
+| `research_niche` | `account`, `keywords`, `profiles` |
+| `draft_replies` | `account`, `tweet_urls`, `lane` (`draft` or `queue`) |
+| `review_and_publish` | `account` |
+| `daily_check` | `account` |
+| `setup_account` | none |
+
+`draft_replies` is lane-aware on purpose. Drafts and queued items live in separate
+stores with no bridge, so staging the same target in both creates two records that
+collide later at the executor's dedup check. The prompt names one lane's tools and
+not the other's.
+
+### Resources
+
+Read-only. None start a browser, and all pass through the same masking as the
+tools, so cookies, passwords, and proxy credentials never leave through them.
+
+| URI | MIME | Contents |
+|---|---|---|
+| `xuse://accounts` | `application/json` | Roster: id, active state, keywords, whether a persona and proxy are set |
+| `xuse://accounts/{account_id}` | `application/json` | One account's full masked config |
+| `xuse://accounts/{account_id}/persona` | `text/markdown` | The persona. Unset returns guidance rather than an error |
+| `xuse://drafts/pending` | `application/json` | Pending drafts with the exact text that would publish |
+
+Unlike tools, resources have no `{"ok": false}` envelope: an unknown account or a
+malformed id surfaces as a protocol error. The server keeps serving either way.

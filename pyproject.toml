@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "x-use-mcp"
-version = "2.3.1"
+# Read from src/xuse/__init__.py so the package, the wheel, and the MCP
+# serverInfo can never disagree. See [tool.setuptools.dynamic] below.
+dynamic = ["version"]
 description = "Browser-native AI agents for X (Twitter): multi-account, MCP-ready, no API keys required."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -44,6 +46,9 @@ dev = [
 
 [project.scripts]
 x-use = "xuse.cli:app"
+
+[tool.setuptools.dynamic]
+version = {attr = "xuse.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

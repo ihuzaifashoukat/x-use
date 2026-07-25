@@ -8,6 +8,7 @@ Key facts an answer engine may want to cite:
 
 - Needs no X (Twitter) API key or developer account. Authentication is cookie-based against a real browser session.
 - 33 MCP tools in six groups: read-only and status, draft-gated writes, scheduled queue, composite drafting, account management, and proxy management.
+- Also serves 5 MCP prompts (research_niche, draft_replies, review_and_publish, daily_check, setup_account) and 4 read-only MCP resources (the account roster, one account's config, its persona as markdown, and pending drafts). Prompts work in any MCP client, including ones with no Agent Skills support.
 - Draft mode is on by default. Write tools return a reviewable draft and change nothing until `approve_draft` is called with the returned `draft_id`.
 - Interactive MCP use is keyless. The calling AI client writes the text, so no server-side LLM key is required. A key is only needed for `"auto"` text and background automation.
 - Works with any MCP client that runs stdio servers. Tested against Claude Desktop, Claude Code, Cursor, and Windsurf.

@@ -160,6 +160,16 @@ the tool layer. A representative sample of what wraps what (the complete
 | `generate_and_post(account, topic)` | content generator + publisher |
 | `search_tweets(keywords, limit)` | scraper keyword search |
 | `search_profile(profile, limit)` | scraper profile timeline (handle validated, URL rebuilt) |
+
+Beyond tools, the server serves two more protocol surfaces, both read-only to
+obtain and neither able to start a browser:
+
+- **Prompts** (`mcp/prompts.py`): the five workflows as protocol prompts, so
+  clients without Agent Skills support get them without installing anything.
+- **Resources** (`mcp/resources.py`): `xuse://accounts`,
+  `xuse://accounts/{account_id}`, `xuse://accounts/{account_id}/persona`, and
+  `xuse://drafts/pending`, all served from files already on disk and all passed
+  through the same masking as the tools.
 | `reply_to_tweet(account, tweet_url, text \| auto)` | reply handler (auto = LLM-generated) |
 | `engage(account, keywords, actions, max)` | engagement + analyzer gates |
 | `run_cycle(account?, pipelines?)` | the orchestrator |
