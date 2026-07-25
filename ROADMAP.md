@@ -6,7 +6,7 @@ Legend: `[x]` shipped · `[ ]` planned or in progress.
 
 ---
 
-## Phase 1 — v2.0 "x-use" relaunch (nearly complete — MCP directory submissions remain)
+## Phase 1 — v2.0 "x-use" relaunch (nearly complete — the repo rename and MCP directory submissions remain)
 
 The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip install x-use-mcp`, a guided init, and first-class MCP support — without rewriting the engine.
 
@@ -40,7 +40,8 @@ The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip 
 - [x] Lazy per-account browser session pool with idle timeout, so MCP calls stay fast and never hang the client
 - [x] **v2.1 MCP expansion** — account management tools (add/update/pause/remove with validated atomic writes), a persistent scheduled-action queue (`queue_post`, `queue_engagement`, `process_queue`, opt-in `auto_drain` worker) with jittered pacing and daily caps, and support tools (draft listing/rejection, run status, account health)
 - [x] **v2.2 agent-native LLM** — one OpenAI-compatible client (`llm`: api_key/base_url/model) replaces the gemini/openai/azure provider stack; interactive MCP use runs keyless (the calling agent writes the text — new `prepare_reply` context tool), server-side LLM only powers `"auto"` text and background automation
-- [x] **v2.3 agent media + skills** — typed media on tweets with photos returned as MCP `ImageContent` on the read tools (new `get_tweet`; `prepare_reply`/`search_tweets` gain `include_images`), freeform account `persona`, composite draft-staging tools (`research_and_stage`, `draft_post_variations`), proxy pool management tools (`list_proxies`/`add_proxy`/`remove_proxy`/`test_proxy`), and a bundled 5-skill agent pack with a plugin marketplace plus one-prompt setup (`docs/SETUP_PROMPT.md`). 25 → 32 tools
+- [x] **v2.3 agent media + skills** *(released — see [CHANGELOG.md](CHANGELOG.md))* — typed media on tweets with photos returned as MCP `ImageContent` on the read tools (new `get_tweet`; `prepare_reply`/`search_tweets` gain `include_images`), freeform account `persona`, composite draft-staging tools (`research_and_stage`, `draft_post_variations`), proxy pool management tools (`list_proxies`/`add_proxy`/`remove_proxy`/`test_proxy`), and a bundled 5-skill agent pack with a plugin marketplace plus one-prompt setup (`docs/SETUP_PROMPT.md`). 25 → 32 tools
+- [x] **v2.3 hardening wave** — a pass driven by live testing against a real X account and a full-surface audit: whole-userinfo credential masking everywhere, queue cancel/crash-recovery/paused-drain fixes, cancel-safe session lifecycle, config-write and metrics atomicity, LLM empty-completion retries with a 1200-token default, and engine truthfulness (no action reports success without confirmation)
 
 ### Config hygiene & docs
 
@@ -69,7 +70,7 @@ Once the package and MCP layer are solid, make the system observable and deploya
 
 ---
 
-## Phase 3 — v2.2+ extensibility
+## Phase 3 — extensibility
 
 Turn x-use from a tool into a platform you can extend without forking.
 
@@ -112,11 +113,18 @@ Look for issues labeled `good first issue` and `help wanted`. Before starting a 
 
 ## Versioning
 
-x-use follows [semantic versioning](https://semver.org/).
+x-use follows [semantic versioning](https://semver.org/). Released changes are recorded in
+[CHANGELOG.md](CHANGELOG.md).
 
 - **v2.0.0** is a major release because it is a breaking restructure: the package moves to `src/xuse/`, imports change, and the primary entry point becomes the `x-use` CLI.
-- The legacy `python src/main.py` entry point is preserved through a deprecation window covering the v2.0.x series, with a warning pointing to `x-use run`. It will be removed no earlier than v2.1.
-- Config file formats (`config/settings.json`, `config/accounts.json`) remain compatible in v2.0; any future schema changes will ship with a migration note in the release notes.
+- The legacy `python src/main.py` entry point is still present and still works, with a warning pointing to `x-use run`. It is scheduled for removal in **v3.0**; the v2 series keeps it.
+- Config file formats (`config/settings.json`, `config/accounts.json`) have remained compatible across the whole v2 series; any future schema change will ship with a migration note in the release notes.
+
+**Cutting a release.** `.github/workflows/publish.yml` publishes to PyPI via trusted
+publishing when a GitHub release is published, and it takes the version from
+`pyproject.toml`. So the order matters: bump `pyproject.toml` → commit → push → tag
+`vX.Y.Z` → publish the GitHub release. Tagging before the bump uploads a wheel carrying the
+previous version number.
 
 ---
 
