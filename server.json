@@ -1,0 +1,37 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ihuzaifashoukat/x-use",
+  "title": "x-use",
+  "description": "Browser-native AI agents for X (Twitter): multi-account, MCP-ready, no X API key required.",
+  "repository": {
+    "url": "https://github.com/ihuzaifashoukat/x-use",
+    "source": "github"
+  },
+  "version": "2.3.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "x-use-mcp",
+      "version": "2.3.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "OPENAI_API_KEY",
+          "description": "Optional. Only needed for server-side text generation ('auto' replies, composite draft tools, background automation). Interactive MCP use is keyless because the calling agent writes the text.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "OPENAI_BASE_URL",
+          "description": "Optional. OpenAI-compatible endpoint, for example https://openrouter.ai/api/v1 or http://localhost:11434/v1 for Ollama. Defaults to api.openai.com.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

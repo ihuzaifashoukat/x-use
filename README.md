@@ -1,5 +1,7 @@
 # x-use
 
+<!-- mcp-name: io.github.ihuzaifashoukat/x-use -->
+
 **Browser-native AI agents for X (Twitter). Multi-account, MCP-ready, no X API key required.**
 
 x-use drives a real, stealth-hardened browser instead of the paid X API. It posts, replies, searches, and engages across as many accounts as you configure, writes content with your own LLM, and exposes everything as MCP tools, so Claude Desktop, Claude Code, Cursor, and other MCP clients can run your X presence directly.
