@@ -8,7 +8,7 @@ project follows [semantic versioning](https://semver.org/). See
 
 ---
 
-## [Unreleased]
+## [2.4.0], 2026-07-25
 
 ### Fixed
 
@@ -303,6 +303,7 @@ CLI.
 
 - `python src/main.py` still works, with a warning pointing to `x-use run`.
 
+[2.4.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/ihuzaifashoukat/x-use/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.0.0...v2.2.0

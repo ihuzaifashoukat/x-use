@@ -5,4 +5,4 @@
 # server.json against it. Do not add a second literal anywhere: this one sat at
 # 2.0.0 through three releases because nothing inside the package read it,
 # while external scanners (MCP directories) did and reported 2.0.0.
-__version__ = "2.3.1"
+__version__ = "2.4.0"

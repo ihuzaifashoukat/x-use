@@ -5,8 +5,9 @@ name: Publish to PyPI
 # publisher on pypi.org must be: repo ihuzaifashoukat/x-use, workflow
 # publish.yml, environment pypi.
 #
-# Release rule: the version in pyproject.toml must be bumped before tagging;
-# the uploaded files take their version from there.
+# Release rule: bump __version__ in src/xuse/__init__.py before tagging.
+# pyproject.toml has no literal version, it reads that attribute, so the
+# uploaded files take their version from there.
 #
 # After PyPI, the server is published to the official MCP Registry. That job
 # authenticates with GitHub OIDC, so it needs no secret, and it takes the
