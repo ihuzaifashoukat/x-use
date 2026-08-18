@@ -1,5 +1,3 @@
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ihuzaifashoukat-x-use-badge.png)](https://mseep.ai/app/ihuzaifashoukat-x-use)
-
 # x-use
 
 <!-- mcp-name: io.github.ihuzaifashoukat/x-use -->
@@ -20,6 +18,8 @@ The X API's pricing tiers put write access out of reach for exactly the people w
 [![Issues](https://img.shields.io/github/issues/ihuzaifashoukat/x-use)](https://github.com/ihuzaifashoukat/x-use/issues)
 [![Forks](https://img.shields.io/github/forks/ihuzaifashoukat/x-use)](https://github.com/ihuzaifashoukat/x-use/network/members)
 [![Stars](https://img.shields.io/github/stars/ihuzaifashoukat/x-use)](https://github.com/ihuzaifashoukat/x-use/stargazers)
+
+<a href="https://mseep.ai/app/ihuzaifashoukat-x-use"><img src="https://mseep.net/pr/ihuzaifashoukat-x-use-badge.png" alt="MseeP.ai security assessment" width="250" /></a>
 
 ---
 
