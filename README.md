@@ -19,8 +19,6 @@ The X API's pricing tiers put write access out of reach for exactly the people w
 [![Forks](https://img.shields.io/github/forks/ihuzaifashoukat/x-use)](https://github.com/ihuzaifashoukat/x-use/network/members)
 [![Stars](https://img.shields.io/github/stars/ihuzaifashoukat/x-use)](https://github.com/ihuzaifashoukat/x-use/stargazers)
 
-<a href="https://mseep.ai/app/ihuzaifashoukat-x-use"><img src="https://mseep.net/pr/ihuzaifashoukat-x-use-badge.png" alt="MseeP.ai security assessment" width="250" /></a>
-
 ---
 
 ## Install
