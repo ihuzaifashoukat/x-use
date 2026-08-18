@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ihuzaifashoukat-x-use-badge.png)](https://mseep.ai/app/ihuzaifashoukat-x-use)
+
 # x-use
 
 <!-- mcp-name: io.github.ihuzaifashoukat/x-use -->
