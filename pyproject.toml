@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,7 +10,7 @@ dynamic = ["version"]
 description = "Browser-native AI agents for X (Twitter): multi-account, MCP-ready, no API keys required."
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Huzaifa Shoukat"},
 ]
@@ -20,29 +20,35 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    "patchright>=1.49,<2",
     "selenium",
     "webdriver-manager",
     "fake-headers",
     "Pillow",
-    "pydantic",
+    "pydantic>=2,<3",
     "openai",
     "requests",
     "python-dotenv",
     "undetected-chromedriver",
     "selenium-stealth",
     "typer>=0.12",
-    "mcp>=1.6,<2",  # 1.6 is the first release with FastMCP lifespan support
+    "mcp>=1.30.0,<2",  # required for ToolAnnotations and structuredContent support
 ]
 
 [project.optional-dependencies]
+playwright = ["playwright>=1.49,<2"]
 dev = [
-    "pytest",
-    "pytest-asyncio",
-    "pyyaml",  # tests/test_skills_pack.py parses SKILL.md frontmatter the way consumers do
+    "playwright>=1.49,<2",  # compatibility comparison in browser fixtures
+    "pytest>=8.4,<10",
+    "pytest-asyncio>=1.2,<2",
+    "pyyaml>=6.0.2,<7",  # skills-pack tests parse actual YAML frontmatter
+    "build>=1.2,<2",
+    "twine>=6,<7",
 ]
 
 [project.scripts]
@@ -56,3 +62,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 xuse = ["skills_pack/*/SKILL.md"]
+
+[tool.uv]
+# The package version and description are dynamic build inputs. Track them so
+# an editable sync after a version bump cannot reuse stale distribution metadata.
+cache-keys = [{file = "pyproject.toml"}, {file = "src/xuse/__init__.py"}, {file = "README.md"}, {file = "LICENSE"}]

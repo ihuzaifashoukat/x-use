@@ -4,10 +4,12 @@ Prints one PASS/FAIL/SKIP line per check (browser/driver, per-account cookies,
 LLM keys, proxies) with remediation hints. Exit code: 0 if nothing failed, 1 otherwise.
 """
 import json
+import importlib
 import logging
 import os
 import shutil
 import socket
+import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -120,7 +122,137 @@ def _windows_browser_paths(binary: str) -> List[Path]:
             for rel in candidates.get(binary, []) if (Path(root) / rel).is_file()]
 
 
-def _check_browser(settings: Dict[str, Any]) -> List[Check]:
+def _mcp_browser_settings(settings: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
+    """Match MCP backend/channel defaults without accepting malformed blocks."""
+    if not isinstance(settings, dict):
+        raise ValueError("settings must be an object")
+    mcp = settings.get("mcp")
+    mcp = {} if mcp is None else mcp
+    if not isinstance(mcp, dict):
+        raise ValueError("mcp must be an object")
+    backend = mcp.get("browser_backend", "patchright")
+    if backend not in ("patchright", "playwright", "selenium"):
+        raise ValueError("mcp.browser_backend must be patchright, playwright, or selenium")
+    if backend == "selenium":
+        return backend, None, True
+    legacy = settings.get("browser_settings")
+    legacy = {} if legacy is None else legacy
+    if not isinstance(legacy, dict):
+        raise ValueError("browser_settings must be an object")
+    channel = mcp.get("browser_channel", legacy.get("channel"))
+    if channel is not None and channel not in ("chrome", "msedge", "chromium"):
+        raise ValueError("mcp.browser_channel must be chrome, msedge, chromium, or null")
+    headless = mcp.get("browser_headless", True)
+    if not isinstance(headless, bool):
+        raise ValueError("mcp.browser_headless must be a boolean")
+    return backend, channel, headless
+
+
+def _probe_browser_driver(backend: str, channel: Optional[str], headless: bool) -> Optional[Path]:
+    """Inspect the installed driver's own registry; never launch a browser.
+
+    The registry handles browser revisions, PLAYWRIGHT_BROWSERS_PATH, OS paths,
+    and bundled headless-shell selection exactly as the launch code does. A
+    short Node subprocess only reads this metadata: it installs nothing and
+    makes no network request. Both supported driver packaging layouts work.
+    """
+    if backend not in ("patchright", "playwright"):
+        raise ValueError("unsupported browser driver")
+    importlib.import_module(f"{backend}.async_api")
+    driver = importlib.import_module(f"{backend}._impl._driver")
+    node, cli = driver.compute_driver_executable()
+    package = Path(cli).parent
+    registry_module = package / "lib" / "server" / "registry" / "index.js"
+    if not registry_module.is_file():
+        registry_module = package / "lib" / "coreBundle.js"
+    if not registry_module.is_file():
+        raise RuntimeError("Browser driver registry is unavailable")
+    executable = channel or ("chromium-headless-shell" if headless else "chromium")
+    script = (
+        "const loaded = require(process.argv[1]); "
+        "const registry = loaded.registry && typeof loaded.registry.findExecutable === 'function' "
+        "? loaded.registry : loaded.registry.registry; "
+        "const executable = registry.findExecutable(process.argv[2]); "
+        "if (!executable) throw new Error('unsupported executable'); "
+        "process.stdout.write(JSON.stringify({path: executable.executablePath() || null}));"
+    )
+    result = subprocess.run(
+        [str(node), "-e", script, str(registry_module), executable],
+        capture_output=True, text=True, check=True, timeout=10,
+        env=driver.get_driver_env(),
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    data = json.loads(result.stdout)
+    if not isinstance(data, dict) or (data.get("path") is not None and not isinstance(data["path"], str)):
+        raise RuntimeError("Invalid browser registry response")
+    return Path(data["path"]) if data.get("path") else None
+
+
+def _probe_playwright_browser(channel: Optional[str], headless: bool) -> Optional[Path]:
+    """Retain the vanilla Playwright probe for existing integrations."""
+    return _probe_browser_driver("playwright", channel, headless)
+
+
+def _probe_patchright_browser(channel: Optional[str], headless: bool) -> Optional[Path]:
+    return _probe_browser_driver("patchright", channel, headless)
+
+
+def _check_mcp_browser(settings: Dict[str, Any]) -> List[Check]:
+    """Check the selected MCP runtime and executable without GUI/network use."""
+    try:
+        backend, channel, headless = _mcp_browser_settings(settings)
+    except ValueError as exc:
+        return [Check("mcp:browser-config", "FAIL", str(exc),
+                      "correct the mcp browser settings in config/settings.json")]
+    if backend == "selenium":
+        return [Check("mcp:browser-runtime", "SKIP", "MCP is configured to use the legacy Selenium backend")]
+    product_name = "Patchright" if backend == "patchright" else "Playwright"
+    probe = _probe_patchright_browser if backend == "patchright" else _probe_playwright_browser
+    checks = [Check("mcp:browser-config", "PASS",
+                    f"backend={backend}, channel={channel or 'bundled'}, headless={headless}")]
+    try:
+        executable = probe(channel, headless)
+    except (ImportError, ModuleNotFoundError):
+        checks.append(Check(f"mcp:{backend}-runtime", "FAIL", f"{product_name} is not importable",
+                            f"install the runtime with `python -m pip install {backend}`"))
+        return checks
+    except Exception:
+        # Driver subprocess failures can echo environment/config data. Do not
+        # expose stdout, stderr, command arguments, or their exception chains.
+        checks.append(Check(f"mcp:{backend}-runtime", "FAIL", f"{product_name} driver inspection failed",
+                            f"repair the {product_name} installation with `python -m pip install --upgrade {backend}`"))
+        return checks
+    checks.append(Check(f"mcp:{backend}-runtime", "PASS", "Python API and local browser driver available"))
+    browser = channel or ("chromium-headless-shell" if headless else "chromium")
+    installed = executable is not None and executable.is_file()
+    if channel in ("chrome", "msedge"):
+        product = "Google Chrome" if channel == "chrome" else "Microsoft Edge"
+        hint = (f"install {product} for channel {channel}, or remove mcp.browser_channel "
+                f"and run `python -m {backend} install chromium`")
+    else:
+        hint = f"install the MCP browser with `python -m {backend} install chromium`"
+    checks.append(Check(f"mcp:browser:{browser}", "PASS" if installed else "FAIL",
+                        str(executable) if installed else "selected browser executable is not installed",
+                        "" if installed else hint))
+    return checks
+
+
+def _check_browser(settings: Dict[str, Any], *, include_mcp: bool = False) -> List[Check]:
+    # Preserve the legacy helper's default API, including driver checks. Doctor
+    # opts into MCP selection; callers testing/using the Selenium helper retain
+    # its original behavior. This also preserves the CLI's injection seam.
+    mcp_checks = []
+    if include_mcp:
+        mcp_checks = _check_mcp_browser(settings)
+        try:
+            backend, _, _ = _mcp_browser_settings(settings)
+        except ValueError:
+            return mcp_checks
+        if backend in ("patchright", "playwright"):
+            return mcp_checks + [Check("legacy-browser/driver", "SKIP",
+                                      "Selenium browser/driver checks apply to `x-use run`")]
+        if not isinstance(settings.get("browser_settings", {}), (dict, type(None))):
+            return mcp_checks + [Check("browser_settings", "FAIL", "browser_settings must be an object")]
     bs = settings.get("browser_settings", {}) or {}
     browser_type = str(bs.get("type") or "chrome").lower()
 
@@ -159,14 +291,62 @@ def _check_browser(settings: Dict[str, Any]) -> List[Check]:
     else:
         checks.append(Check(f"driver:{driver_name}", "PASS",
                             "no local driver; webdriver-manager will download one (requires internet)"))
+    return mcp_checks + checks
+
+
+def _check_mcp_cookies(loader: ConfigLoader, accounts: List[Dict[str, Any]],
+                       settings: Dict[str, Any]) -> List[Check]:
+    """Validate cookie imports with exactly the strict MCP runtime rules."""
+    try:
+        backend, _, _ = _mcp_browser_settings(settings)
+    except ValueError:
+        return [Check("mcp:cookies", "SKIP", "fix MCP browser configuration before validating cookies")]
+    if backend == "selenium":
+        return [Check("mcp:cookies", "SKIP", "strict MCP cookie import is not selected")]
+    if not accounts:
+        return [Check("mcp:cookies", "SKIP", "no accounts configured")]
+    try:
+        from xuse.browser.cookies import load_account_cookies
+    except Exception:
+        return [Check("mcp:cookies", "FAIL", "MCP cookie validator is unavailable",
+                      "repair the x-use installation")]
+    checks = []
+    details = {
+        "missing_cookies": "cookie file or required authentication cookies are missing",
+        "expired_credentials": "authentication cookies have expired",
+        "invalid_cookies": "cookie export fails X domain, security, format, or expiry validation",
+    }
+    for account in accounts:
+        if not isinstance(account, dict):
+            checks.append(Check("mcp:cookies", "FAIL", "account configuration must contain objects"))
+            continue
+        account_id = account.get("account_id") or "<unknown>"
+        name = f"mcp:cookies:{account_id}"
+        try:
+            load_account_cookies(account, loader)
+        except Exception as exc:
+            detail = details.get(getattr(exc, "reason", None), "cookie import could not be validated")
+            checks.append(Check(name, "FAIL", detail,
+                                "re-export fresh x.com cookies (auth_token + ct0, secure, unexpired)"))
+        else:
+            checks.append(Check(name, "PASS", "cookie export satisfies strict MCP import validation"))
     return checks
 
 
-def _check_cookies(accounts: List[Dict[str, Any]]) -> List[Check]:
+def _check_cookies(accounts: List[Dict[str, Any]], *, include_mcp: bool = False,
+                   loader: Optional[ConfigLoader] = None,
+                   settings: Optional[Dict[str, Any]] = None) -> List[Check]:
     checks: List[Check] = []
     if not accounts:
-        return [Check("cookies", "SKIP", "no accounts configured")]
-    for acc in accounts:
+        checks.append(Check("cookies", "SKIP", "no accounts configured"))
+    for index, acc in enumerate(accounts):
+        if not isinstance(acc, dict):
+            checks.append(Check(
+                f"cookies:account-{index + 1}", "FAIL",
+                "account configuration must be an object",
+                "replace the malformed entry in config/accounts.json with an account object",
+            ))
+            continue
         account_id = acc.get("account_id") or "<unknown>"
         suffix = " (inactive)" if not acc.get("is_active", True) else ""
         if acc.get("cookies"):
@@ -192,9 +372,10 @@ def _check_cookies(accounts: List[Dict[str, Any]]) -> List[Check]:
             continue
         try:
             data = json.loads(resolved.read_text(encoding="utf-8"))
-        except Exception as e:
+        except Exception:
             checks.append(Check(f"cookies:{account_id}{suffix}", "FAIL",
-                                f"{resolved} is not valid JSON: {e}"))
+                                "cookie file is unreadable or is not valid JSON",
+                                "re-export fresh x.com cookies to the configured file"))
             continue
         ok, problems = check_cookie_data(data)
         checks.append(Check(
@@ -203,6 +384,8 @@ def _check_cookies(accounts: List[Dict[str, Any]]) -> List[Check]:
             str(resolved) if ok else "; ".join(problems),
             "" if ok else "re-export fresh x.com cookies (need auth_token + ct0, unexpired)",
         ))
+    if include_mcp and loader is not None:
+        checks += _check_mcp_cookies(loader, accounts, settings or {})
     return checks
 
 
@@ -242,7 +425,39 @@ def _redact_proxy(url: str) -> str:
         return "<unparseable proxy URL>"
 
 
-def _check_proxies(loader: ConfigLoader, accounts: List[Dict[str, Any]]) -> List[Check]:
+def _check_proxies(loader: ConfigLoader, accounts: List[Dict[str, Any]], *, include_mcp: bool = True) -> List[Check]:
+    if include_mcp:
+        try:
+            backend, _, _ = _mcp_browser_settings(loader.get_settings() or {})
+        except ValueError:
+            return [Check("mcp:proxy", "FAIL", "invalid browser configuration")]
+        if backend in {"patchright", "playwright"}:
+            from xuse.browser.sessions import resolve_account_proxy
+            checks = []
+            for account in accounts:
+                account_id = account.get("account_id") or "<unknown>"
+                try:
+                    resolved = resolve_account_proxy(loader, account)
+                except Exception:
+                    checks.append(Check(f"proxy:{account_id}", "FAIL", "configured route could not be validated",
+                                        "check the account/global proxy, environment values and hash pool selection"))
+                    continue
+                if resolved is None:
+                    continue
+                # The validated server excludes authentication. TCP reachability
+                # alone cannot establish proxy authentication or X connectivity.
+                display = resolved["server"]
+                parts = urlparse(display)
+                port = parts.port or {"http": 80, "https": 443, "socks5": 1080}[parts.scheme]
+                try:
+                    with socket.create_connection((parts.hostname, port), timeout=5):
+                        pass
+                    checks.append(Check(f"proxy:{account_id}", "PASS",
+                                        f"{display} TCP reachable; authentication and X access not verified"))
+                except Exception:
+                    checks.append(Check(f"proxy:{account_id}", "FAIL", f"{display} TCP connection failed",
+                                        "verify the configured route; the runtime will not fall back to direct access"))
+            return checks or [Check("proxy", "SKIP", "no proxies configured")]
     proxied = [a for a in accounts if a.get("proxy")]
     if not proxied:
         return [Check("proxy", "SKIP", "no per-account proxies configured")]
@@ -289,8 +504,8 @@ def run_checks() -> int:
 
     checks: List[Check] = []
     checks += _check_config_files(loader)
-    checks += _check_browser(settings)
-    checks += _check_cookies(accounts)
+    checks += _check_browser(settings, include_mcp=True)
+    checks += _check_cookies(accounts, include_mcp=True, loader=loader, settings=settings)
     checks += _check_llm_keys(settings)
     checks += _check_proxies(loader, accounts)
 

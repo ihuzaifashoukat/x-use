@@ -4,6 +4,7 @@ Overview
 
 - Summarizes key fields in `config/settings.json` and `config/accounts.json`.
 - The app is tolerant of optional fields. Unknown keys are ignored by Pydantic models unless explicitly used.
+- The MCP server defaults to Patchright. `browser_settings` driver and stealth options describe the legacy Selenium CLI/backend; use the `mcp` fields below for the new runtime. See [BROWSER_RUNTIME.md](BROWSER_RUNTIME.md) for recovery and supported operations.
 
 settings.json
 
@@ -64,10 +65,23 @@ Notes
   - login_wait_seconds: Optional. If > 0, after applying cookies the browser opens X home and waits up to this many seconds for a signed-in state. Use this to complete manual login once when cookies are missing/expired.
   - chrome_driver_path / gecko_driver_path (optional): use a specific local driver binary. The app prefers local drivers if found.
 - mcp (settings for the `x-use mcp` server)
-  - draft_mode: bool, default `true`. When on, write tools (`post_tweet`, `generate_and_post`, `reply_to_tweet`, `engage`) build the full payload, store a draft, and change nothing until `approve_draft(draft_id)` is called. Set to `false` to let write tools act immediately.
+  - browser_backend: `patchright` (default), `playwright` for optional driver compatibility, or `selenium` for explicit legacy compatibility. The Playwright option requires installing the `playwright` extra. The old `run_cycle` batch tool requires Selenium; community audience writes are not verified on either async backend.
+  - browser_headless: bool, default `true`.
+  - browser_channel: `null` for the matching bundled Chromium, `chrome`/`msedge` for installed browsers, or `chromium` for bundled full Chromium. Run `python -m patchright install chromium` for the default bundled browser (`python -m playwright install chromium` for that optional backend). `x-use doctor` checks the driver and executable selected by these settings.
+  - max_browser_sessions: integer 1-16, default `4`; limits warm isolated contexts within one server process.
+  - draft_mode: bool, default `true`. When on, write tools (`post_tweet`, `generate_and_post`, `reply_to_tweet`, `engage`) build the full payload, store a draft, and change nothing until `approve_draft(draft_id)` is called. Messages and follows always require individual approval, even when this setting is `false`.
   - session_idle_timeout_seconds: idle timeout for the per-account browser session pool before sessions are reaped. Default `600`.
   - cold_start_timeout_seconds: max wait for a browser session to cold-start before the tool call fails with a structured error. Default `180`.
+  - tool_timeout_seconds: finite positive overall browser-operation timeout, default `180`. Cancellation cleanup completes before returning; an interrupted write may have an uncertain outcome and must be inspected by action ID.
+  - messaging_timeout_seconds: finite positive wait for inbox or passcode UI to render, default `60`. Known login, passcode, and rate-limit gates still return early.
   - drafts_file: path of the persistent draft store (JSONL). Default `data/drafts.jsonl` under the project root.
+  - safety_file: SQLite policy/attempt ledger path, default `data/action_safety.sqlite3`. Share this file and consistent account IDs across local clients; different databases/hosts do not share budgets.
+  - outreach_file: account-scoped leads, suppression and campaigns SQLite path, default `data/outreach.sqlite3`.
+  - safety.read_interval_seconds / safety.write_interval_seconds: finite nonnegative minimum attempt spacing, defaults `2` / `90`.
+  - safety.max_actions_per_minute: positive integer shared attempt cap, default `6`.
+  - safety.daily_caps: nonnegative integer UTC-day caps for known actions, default `{read: 300, post: 5, reply: 15, like: 30, retweet: 10, message: 10, follow: 10, unlock: 5}`. Zero disables the action. Failed attempts count, and account pauses survive restarts.
+  - Safety caps are operator policy, not X-published limits or a guarantee against account restrictions. They apply to both async browser drivers through granular tools, draft approval and queue executors.
+  - The owner inbox PIN is supplied through a server environment variable (`XUSE_INBOX_PIN` by default), then consumed once by `unlock_inbox`. Never place it in settings, cookie exports, drafts or tool arguments.
 
 - queue (settings for the scheduled-action queue MCP tools: `queue_post`, `queue_engagement`, `process_queue`)
   - store_file: JSONL persistence for queued actions (repo-relative or absolute). Default `data/engagement_queue.jsonl`.
@@ -78,14 +92,15 @@ Notes
   - auto_drain.enabled: opt-in background worker inside the MCP server. Default `false`.
   - auto_drain.interval_seconds: seconds between auto-drain ticks. Default `900`.
   - auto_drain.max_actions_per_account: per-account budget per tick. Default `3`.
-  - Queued items execute only via an explicit `process_queue` call or the auto-drain worker. Daily caps and pacing apply on both paths.
+  - Queued items execute only via an explicit `process_queue` call or the auto-drain worker. Queue caps/pacing apply on both paths, and the async browser safety ledger also applies. A queued uncertain write cannot automatically bypass the action ledger's duplicate guard.
 
-MCP media behavior (v2.3 read tools: `get_tweet`, `prepare_reply`, `search_tweets`)
+MCP media behavior (`get_tweet`, `prepare_reply`, `search_tweets`, `search_profile`, `get_thread`)
 
-- include_images: per-tool default, `true` for `get_tweet` and `prepare_reply`, `false` (opt-in) for `search_tweets`. When on, photos additionally attach as MCP image content so a vision-capable client sees them.
-- Bounds: up to 4 photos per tweet; the first photo of up to 5 tweets per search.
-- Re-encode: each fetched photo is converted to JPEG, max 1024px on the long edge, max 200KB; fetch timeout 5s. Failed fetches are skipped, never errors.
-- Fallback: the JSON envelope always carries the typed `media` list (photos with alt text; videos as poster + URL only), so clients without image support lose nothing.
+- include_images: `true` by default for `get_tweet` and `prepare_reply`; opt-in for search, profile and thread reads. Images attach as MCP content for vision-capable clients.
+- Bounds: up to four photos per individual post, or the first photo of up to five posts per search/profile result. Thread reads attempt up to five eligible photos/video posters with concurrency three and return source mappings and coverage. A poster is not the video's content; audio/video transcription is unavailable.
+- Re-encode: downloaded images become JPEG, at most 1024px on the long edge and 200KB. Downloads have an 8MB byte cap, a 40-million-pixel decode cap and bounded timeouts. Failed images retain their URL metadata without failing the read.
+- Transport: public HTTPS image hosts are restricted, redirects are disabled, and no account cookies or ambient authentication are sent. HTTP/HTTPS account proxies carry the media request; SOCKS accounts retain URLs without downloading. An invalid route never falls back to direct access.
+- Fallback: the structured result preserves media URLs, available alt text and media type when image blocks are unavailable. Clients without image support cannot analyze the pixels from metadata alone.
 
 accounts.json (per account)
 
@@ -93,7 +108,7 @@ accounts.json (per account)
 - is_active: bool
 - cookies: [ cookie objects ] (optional)
 - cookie_file_path: string (recommended)
-- proxy: URL or "pool:<pool_name>"
+- proxy: URL, `${VAR}` interpolation, or "pool:<pool_name>". Async backends use the account value first, then `browser_settings.proxy` when absent. Pools require a stable `hash` strategy; `round_robin` is a legacy Selenium option. Invalid configured routes never fall back to direct access. HTTP/HTTPS and unauthenticated SOCKS5 are supported by the async runtime; authenticated SOCKS5 and SOCKS4 are rejected there.
 - post_to_community: bool, community_id: string?, community_name: string?
 - target_keywords or target_keywords_override: [strings]
 - persona: string (optional, max 4000 chars), freeform markdown describing the account's voice/engagement style; returned by `get_tweet`/`prepare_reply` and prepended to server-side LLM prompts. Starter presets in `presets/personas/`.
@@ -119,7 +134,7 @@ Notes
 - Unknown fields are generally ignored; keep to the provided keys for predictable behavior.
 - `${VAR}` interpolation remains the mechanism for proxy strings only (e.g. `"http://user:${RESI_PASS}@host:port"` in `proxy_pools`); it reads the process environment and does not apply to any other config field. The LLM key uses the env-var override described under `llm` above.
 - For pools with env vars, ensure your shell exports them before running (`export RESI_PASS=...`).
-- Cookies must match `cookie_domain_url` domain; the app navigates there before injection.
-- Community posting: the app opens the “Choose audience” menu and selects by `community_id` (preferred) or visible `community_name`. It scrolls virtualized lists and uses JS-click fallbacks when needed.
+- Legacy Selenium cookies must match `cookie_domain_url`. Both async drivers import only secure X-domain authentication cookies and always use `https://x.com`; they reject ambiguous or expired imports.
+- Community posting on the legacy Selenium backend: the app opens the “Choose audience” menu and selects by `community_id` (preferred) or visible `community_name`. It scrolls virtualized lists and uses JS-click fallbacks when needed.
   - If selection still fails, confirm the account is a member of the community and that it appears under “My Communities”.
   - UI can change; open an issue with a DOM snapshot if selectors need tuning.

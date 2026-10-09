@@ -8,7 +8,7 @@ import time
 import pytest
 
 import xuse.doctor as doctor_module
-from xuse.doctor import Check, _check_llm_keys, check_cookie_data
+from xuse.doctor import Check, _check_cookies, _check_llm_keys, check_cookie_data
 
 
 @pytest.fixture(autouse=True)
@@ -66,6 +66,15 @@ def test_alternate_expiry_field_names_checked():
     ok, problems = check_cookie_data(_cookies(expirationDate=time.time() - 10))
     assert not ok
     assert any("expired" in p for p in problems)
+
+
+@pytest.mark.parametrize("account", [None, "not-an-account-object", 7, []])
+def test_cookie_check_reports_malformed_account_rows(account):
+    checks = _check_cookies([account])
+
+    assert len(checks) == 1
+    assert checks[0].status == "FAIL"
+    assert checks[0].detail == "account configuration must be an object"
 
 
 # --- doctor LLM check mirrors build_client resolution -----------------------

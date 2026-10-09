@@ -6,12 +6,12 @@
     1. Preflight: git and Python >= 3.10 must be present.
     2. Clone the repo (or reuse/update an existing clone, or install in
        place when run from inside the repo).
-    3. Create a virtual environment (venv\) and install x-use into it.
-    4. Bootstrap local config: .env and config\accounts.json from the
-       shipped examples (never overwrites existing files).
-    5. Run `x-use doctor` so you immediately see what is left to set up.
+    3. Bootstrap uv locally when needed and synchronize .venv from uv.lock.
+    4. Install Chromium for the configured Patchright or Playwright backend.
+    5. Create missing sample config and run doctor; existing config is retained.
 
-    The script is idempotent: re-running it reuses the clone and the venv.
+    Re-running reuses the checkout and environment. No global Python packages
+    or administrator changes are required.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File install.ps1
@@ -29,6 +29,8 @@ param(
     [string]$Dir = $(if ($env:XUSE_INSTALL_DIR) { $env:XUSE_INSTALL_DIR } else { "" }),
     # Install with dev extras (pytest) for contributors.
     [switch]$Dev,
+    # Reuse a browser already installed for the selected browser-driver version.
+    [switch]$SkipBrowser,
     # git pull --ff-only an existing checkout before installing.
     [switch]$Update,
     # Show usage and exit.
@@ -100,7 +102,7 @@ if (Test-XUseCheckout $Dir) {
     if ($Update) {
         Write-Info "Updating existing clone in $Dir ..."
         git -C $Dir pull --ff-only
-        if ($LASTEXITCODE -ne 0) { Write-Warn "git pull failed - keeping the existing checkout." }
+        if ($LASTEXITCODE -ne 0) { Fail "git pull failed; the existing checkout was not updated." }
     } else {
         Write-Info "Existing x-use checkout found in $Dir - reusing it (pass -Update to pull latest)."
     }
@@ -115,91 +117,47 @@ if (Test-XUseCheckout $Dir) {
     }
 }
 $Dir = (Resolve-Path $Dir).Path
-
-# --- virtual environment -----------------------------------------------------------
-
-$venvDir = Join-Path $Dir "venv"
-if (Test-Path $venvDir) {
-    Write-Info "Virtual environment already exists at $venvDir - reusing it."
-} else {
-    Write-Info "Creating virtual environment at $venvDir ..."
-    Invoke-Native $pyExe ($pyArgs + @("-m", "venv", $venvDir)) "python -m venv"
+if (-not $env:X_USE_HOME) {
+    if (-not $env:LOCALAPPDATA) { Fail "LOCALAPPDATA is unavailable; set X_USE_HOME to an absolute data directory." }
+    $env:X_USE_HOME = Join-Path $env:LOCALAPPDATA "x-use"
 }
-$venvPy = Join-Path $venvDir "Scripts\python.exe"
-if (-not (Test-Path $venvPy)) { Fail "venv created at $venvDir but Scripts\python.exe was not found." }
-$binDir = Split-Path $venvPy
+$dataHome = $env:X_USE_HOME
 
-# --- install ------------------------------------------------------------------------
+# --- shared uv/browser setup -----------------------------------------------------------
 
-Write-Info "Installing x-use (this can take a minute) ..."
-Invoke-Native $venvPy @("-m", "pip", "install", "--quiet", "--upgrade", "pip") "pip upgrade"
-Push-Location $Dir
-try {
-    if ($Dev) {
-        Invoke-Native $venvPy @("-m", "pip", "install", "--quiet", "-e", ".[dev]") "pip install"
-    } else {
-        Invoke-Native $venvPy @("-m", "pip", "install", "--quiet", "-e", ".") "pip install"
-    }
-} finally {
-    Pop-Location
-}
-
+$setupScript = Join-Path $Dir "scripts\setup_uv.py"
+if (-not (Test-Path -LiteralPath $setupScript)) { Fail "the checkout is missing scripts\setup_uv.py." }
+$setupArgs = $pyArgs + @($setupScript)
+if ($Dev) { $setupArgs += "--dev" }
+if ($SkipBrowser) { $setupArgs += "--skip-browser" }
+Write-Info "Setting up uv, x-use and the configured browser ..."
+Invoke-Native $pyExe $setupArgs "x-use setup"
+$binDir = Join-Path $Dir ".venv\Scripts"
 $xuseBin = Join-Path $binDir "x-use.exe"
-if (-not (Test-Path $xuseBin)) { Fail "install finished but x-use.exe was not found in $binDir." }
-& $xuseBin --help | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail "x-use was installed but fails to run ($xuseBin --help)." }
-Write-Info "Installed x-use -> $xuseBin"
-
-# --- config bootstrap (never overwrites) ----------------------------------------------
-
-$envExample = Join-Path $Dir ".env.example"
-$envFile = Join-Path $Dir ".env"
-if ((Test-Path $envExample) -and -not (Test-Path $envFile)) {
-    Copy-Item $envExample $envFile
-    Write-Info "Created .env from .env.example - add your LLM API key(s) there."
-}
-$accountsExample = Join-Path $Dir "config\accounts.example.json"
-$accountsFile = Join-Path $Dir "config\accounts.json"
-if ((Test-Path $accountsExample) -and -not (Test-Path $accountsFile)) {
-    Copy-Item $accountsExample $accountsFile
-    Write-Info "Created config\accounts.json from the example (ships inactive - configure it via x-use init)."
-}
-
-# --- doctor ----------------------------------------------------------------------------
-
-Write-Info "Running preflight checks (x-use doctor) ..."
-Push-Location $Dir
-try {
-    & $xuseBin doctor
-    $doctorFailed = ($LASTEXITCODE -ne 0)
-} finally {
-    Pop-Location
-}
+if (-not (Test-Path -LiteralPath $xuseBin)) { Fail "setup finished but x-use.exe was not found in $binDir." }
 
 # --- done -------------------------------------------------------------------------------
 
 Write-Host ""
 Write-Host "x-use is installed." -ForegroundColor White
-if ($doctorFailed) {
-    Write-Warn "doctor reported issues above - fix the FAIL rows, then you are set."
-}
+$quotedDir = $Dir.Replace("'", "''")
+$quotedBin = $xuseBin.Replace("'", "''")
+$configScript = Join-Path $Dir "scripts\mcp_config.py"
+$configArgs = $pyArgs + @($configScript, $xuseBin, $dataHome)
+$mcpConfig = (& $pyExe @configArgs | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $mcpConfig) { Fail "could not render the MCP client configuration." }
+$quotedDataHome = $dataHome.Replace("'", "''")
 Write-Host @"
 
 Next steps:
-  1. cd $Dir
-  2. $xuseBin init      # interactive wizard: account, cookies, LLM keys
-  3. $xuseBin doctor    # re-check until every row is PASS/SKIP
-  4. $xuseBin run       # or connect an MCP client (below)
+  1. Set-Location -LiteralPath '$quotedDir'
+  2. `$env:X_USE_HOME = '$quotedDataHome'
+  3. & '$quotedBin' init      # interactive wizard: account, cookies, LLM keys
+  4. & '$quotedBin' doctor    # re-check until every row is PASS/SKIP
+  5. & '$quotedBin' run       # or connect an MCP client (below)
 
 MCP client config (claude_desktop_config.json):
-  {
-    "mcpServers": {
-      "x-use": {
-        "command": "$($xuseBin -replace '\\', '\\')",
-        "args": ["mcp"]
-      }
-    }
-  }
+$mcpConfig
 
 Docs: README.md, BEST_PRACTICES.md, docs\CONFIG_REFERENCE.md
 "@

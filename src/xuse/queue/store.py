@@ -1,18 +1,32 @@
 """Persistent store for queued actions.
 
-JSONL, append-only, last-write-wins on load (same pattern as the MCP draft
-store). Items stuck in "processing" at load reset to "pending": the server
-died mid-action. Payloads must never contain secrets.
+JSONL, append-only, last-write-wins on load. Interrupted actions stop for
+operator inspection; they are never automatically replayed. Payloads must
+never contain secrets.
 """
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from xuse.core.local_state import private_state_file
+
 from .models import QueuedAction, QueueStatus
 
 logger = logging.getLogger(__name__)
+
+
+class QueueJournalError(RuntimeError):
+    """An external write completed but its local final status was not saved."""
+
+    reason = "queue_journal_failure"
+
+    def __init__(self, queue_id: str, action_id: Optional[str] = None):
+        super().__init__("The action completed, but its queue outcome could not be saved. Inspect X and account safety; do not resend.")
+        self.queue_id = queue_id
+        self.action_id = action_id
 
 
 def _utcnow_iso() -> str:
@@ -58,8 +72,8 @@ class QueueStore:
             created_at=_utcnow_iso(),
             not_before=not_before,
         )
-        self._items[item.queue_id] = item
         self._append(item)
+        self._items[item.queue_id] = item
         return item
 
     def get(self, queue_id: str) -> QueuedAction:
@@ -73,21 +87,23 @@ class QueueStore:
                    not_before: Optional[str] = None,
                    completed_at: Optional[str] = None) -> QueuedAction:
         item = self.get(queue_id)
-        item.status = status
+        candidate = item.model_copy(update={"status": status})
         if last_error is not None:
-            item.last_error = last_error
+            candidate.last_error = last_error
         if not_before is not None:
-            item.not_before = not_before
+            candidate.not_before = not_before
         if completed_at is not None:
-            item.completed_at = completed_at
-        self._append(item)
+            candidate.completed_at = completed_at
+        self._append(candidate)
+        for field in ("status", "last_error", "not_before", "completed_at"):
+            setattr(item, field, getattr(candidate, field))
         return item
 
     def record_attempt(self, queue_id: str, last_error: str) -> QueuedAction:
         item = self.get(queue_id)
-        item.attempts += 1
-        item.last_error = last_error
-        self._append(item)
+        candidate = item.model_copy(update={"attempts": item.attempts + 1, "last_error": last_error})
+        self._append(candidate)
+        item.attempts, item.last_error = candidate.attempts, candidate.last_error
         return item
 
     # -- queries ---------------------------------------------------------
@@ -156,11 +172,14 @@ class QueueStore:
         if not self._path:
             return
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
+            private_state_file(self._path)
             with self._path.open("a", encoding="utf-8") as f:
                 f.write(item.model_dump_json() + "\n")
+                f.flush()
+                os.fsync(f.fileno())
         except Exception:
             logger.exception("Failed to persist queue item %s to %s", item.queue_id, self._path)
+            raise
 
     def _load(self) -> None:
         if not self._path or not self._path.exists():
@@ -174,11 +193,14 @@ class QueueStore:
                     try:
                         item = QueuedAction.model_validate_json(line)
                     except Exception:
-                        logger.warning("Skipping malformed queue line in %s", self._path)
-                        continue
+                        # Skipping a damaged transition could resurrect an
+                        # earlier pending version of an already sent action.
+                        raise ValueError("Queue journal contains an invalid record; repair it before processing actions.") from None
                     if item.status == "processing":
-                        item.status = "pending"  # crashed mid-action
+                        item.status = "failed"
+                        item.last_error = "Interrupted action: outcome unconfirmed. Inspect X and account safety before enqueueing again."
                     self._items[item.queue_id] = item  # last write wins
             logger.info("Loaded %d queue item(s) from %s", len(self._items), self._path)
         except Exception:
             logger.exception("Failed to load queue from %s", self._path)
+            raise

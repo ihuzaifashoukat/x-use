@@ -7,16 +7,23 @@
     "url": "https://github.com/ihuzaifashoukat/x-use",
     "source": "github"
   },
-  "version": "2.4.1",
+  "version": "3.0.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "x-use-mcp",
-      "version": "2.4.1",
+      "version": "3.0.0",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
+        {
+          "name": "X_USE_HOME",
+          "description": "Absolute private directory for configuration, cookies, action journals and account state. Keep this stable across MCP client working directories.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
         {
           "name": "OPENAI_API_KEY",
           "description": "Optional. Only needed for server-side text generation ('auto' replies, composite draft tools, background automation). Interactive MCP use is keyless because the calling agent writes the text.",

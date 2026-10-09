@@ -39,6 +39,13 @@ async def test_auto_drain_off_by_default(mcp_server):
     assert getattr(mcp_server, "xuse_auto_drain", None) is None
 
 
+@pytest.mark.parametrize("invalid", [[], "patchright", 0, False])
+def test_malformed_mcp_settings_fail_before_startup(make_config_loader, invalid):
+    loader = make_config_loader(settings={"mcp": invalid}, accounts=[])
+    with pytest.raises(ValueError, match="mcp settings must be an object"):
+        create_server(config_loader=loader)
+
+
 @pytest.mark.asyncio
 async def test_auto_drain_scheduler_created_when_enabled(make_config_loader, drafts_path,
                                                          tmp_path, browser_factory):

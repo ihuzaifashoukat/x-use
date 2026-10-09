@@ -1,36 +1,54 @@
-Data Guide
+# Local data and examples
 
-Overview
+This directory holds private runtime state and two tracked configuration
+examples. The examples contain dummy values and cannot authenticate an
+account or connect to a working proxy. Keep your own cookies, credentials,
+browser state and operational records outside source control.
 
-- This folder includes dummy data to help you configure proxies and account cookies.
-- Files here are safe examples; replace values with your real data before use.
+## Cookie shape
 
-Cookies
+[`cookies/dummy_cookies_example.json`](cookies/dummy_cookies_example.json)
+shows an array with `auth_token` and `ct0` for `.x.com`. Point an account's
+`cookie_file_path` at your actual private export, for example
+`data/cookies/personal.cookies.json`. Relative paths are checked against the
+configuration directory first, then the project root; absolute paths are
+also accepted.
 
-- Example: `data/cookies/dummy_cookies_example.json`
-  - Format: an array of cookie objects compatible with Selenium `add_cookie`.
-  - Common fields: `name`, `value`, `domain` (e.g., `.x.com`), `path`, `expires` (unix timestamp), `httpOnly`, `secure`, `sameSite`.
-  - Usage: Point an account’s `cookie_file_path` in `config/accounts.json` to your cookie file.
-    - Example: `"cookie_file_path": "config/tech_innovator_001_cookies.json"`
-    - You can copy the dummy file into `config/` and rename, or update the path directly to `data/cookies/...`.
+The async Patchright/Playwright runtime requires exactly one nonempty, secure
+cookie of each authentication name for `x.com` or `.x.com`, with path `/`.
+The async loader expects a JSON array of cookie objects. Common
+fields are `name`, `value`, `domain`, `path`, `secure`, `httpOnly`, `sameSite`
+and `expires`; expiration aliases `expirationDate` and `expiry` are supported.
+Expired authentication cookies are rejected. The dummy example omits expiry
+so it remains a useful shape example; use the real expiry from your export.
+Legacy Selenium imports the same array shape.
 
-Proxies
+## Proxy examples
 
-- Pools are defined in `config/settings.json` under `browser_settings.proxy_pools`.
-  - Supports environment variable interpolation, e.g. `http://user:${RESI_PASS}@eu1.proxy.local:8080`.
-  - Set env vars before running: `export RESI_PASS="your_password"`.
-- Pool strategy is controlled by `browser_settings.proxy_pool_strategy`: `hash` (stable per-account) or `round_robin` (rotates with state).
-- Round-robin state is stored in `data/proxy_pools_state.json`.
-  - This file maps pool names to the next index to pick.
+[`proxies/dummy_proxies.json`](proxies/dummy_proxies.json) contains illustrative
+HTTP, HTTPS and unauthenticated SOCKS5 routes. Copy your actual URLs into
+`browser_settings.proxy_pools`, choose `proxy_pool_strategy: "hash"`, and set
+an account's `proxy` to `pool:<pool_name>`. A direct account URL is also
+supported. Environment placeholders such as `${RESI_PASS}` must be set in the
+server environment before use. The example hosts are placeholders.
 
-Files included
+Patchright/Playwright rejects authenticated SOCKS5, SOCKS4 and rotating pool
+strategies. Round-robin pools belong to the legacy Selenium workflow. That
+workflow creates `data/proxy_pools_state.json` when needed; there is no tracked
+sample state file to copy. The proxy example file is reference material,
+not an automatically loaded configuration source.
 
-- `data/cookies/dummy_cookies_example.json`: Two sample cookies for `x.com` (`.x.com`).
-- `data/proxy_pools_state.json`: Sample state with counters for pools.
-- `data/proxies/dummy_proxies.json`: Example proxy URLs you can adapt into your settings’ proxy pools.
+## Generated state
 
-Notes
+Runtime-created files include drafts (`drafts.jsonl`), the action queue
+(`engagement_queue.jsonl`), the action ledger (`action_safety.sqlite3`),
+outreach leads/campaigns (`outreach.sqlite3`), browser ownership locks and
+legacy account metrics (`metrics/<account_id>.json`). SQLite sidecars and
+browser/session directories are private too. The old tracked metrics snapshot
+was removed because it was operational history rather than reusable input.
 
-- Do not commit real cookies or passwords. Keep secrets in environment variables or local untracked files.
-- If you change `proxy_pool_state_file` path in settings, update or copy `data/proxy_pools_state.json` accordingly.
-
+These stores are created by their consumers; a fresh checkout does not need
+dummy ledgers, counters or browser profiles. Do not reset the action ledger to
+recover an uncertain write: inspect X and use the documented reconciliation
+workflow. Share the same account IDs and safety database across local clients
+that must share budgets. See [browser runtime](../docs/BROWSER_RUNTIME.md).

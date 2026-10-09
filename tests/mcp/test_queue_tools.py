@@ -31,6 +31,27 @@ async def no_sleep(_seconds):
     return None
 
 
+@pytest.mark.asyncio
+async def test_queue_response_is_bounded_and_all_pages_accessible(queue_server, queue_store):
+    for index in range(125):
+        queue_store.add(account='acc1', action='post', payload={'text':str(index)}, dedup_key=str(index))
+    result = await call_tool(queue_server, 'list_queue', {'account':'acc1'})
+    assert result['count'] == 50 and result['total'] == 125 and result['next_offset'] == 50
+    seen = {item['queue_id'] for item in result['items']}
+    while result['next_offset'] is not None:
+        result = await call_tool(queue_server, 'list_queue', {'account':'acc1', 'offset':result['next_offset']})
+        assert not seen.intersection(item['queue_id'] for item in result['items'])
+        seen.update(item['queue_id'] for item in result['items'])
+    assert len(seen) == 125
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('arguments', [{'limit':0}, {'limit':101}, {'offset':-1}])
+async def test_queue_pagination_rejects_invalid_inputs(queue_server, arguments):
+    result = await call_tool(queue_server, 'list_queue', arguments)
+    assert not result['ok']
+
+
 @pytest.fixture
 def queue_store(tmp_path):
     return QueueStore(tmp_path / "queue.jsonl")

@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from xuse.utils.sanitize import sanitize_text
 
 from .models import QueueConfig, QueuedAction
-from .store import QueueStore, is_due
+from .store import QueueJournalError, QueueStore, is_due
 
 logger = logging.getLogger(__name__)
 
@@ -147,13 +147,10 @@ class QueueRunner:
             try:
                 result = await self.executor(item)
             except asyncio.CancelledError:
-                # Drain cancelled mid-execution (client disconnect, scheduler
-                # stop): un-zombie the item so a later drain in this process
-                # can retry it — the store's load-time processing→pending
-                # reset only covers restarts. The in-flight browser thread
-                # may still land the action (at-least-once); executor-side
-                # dedup is the guard against a duplicate on re-run.
-                self.store.set_status(item.queue_id, "pending")
+                # The external action may have landed before cancellation.
+                # A later drain must not replay an unconfirmed write.
+                self.store.set_status(item.queue_id, "failed", last_error=
+                    "Interrupted action: outcome unconfirmed. Inspect X and account safety before enqueueing again.")
                 raise
             except Exception as e:
                 # Sanitize BEFORE persisting/reporting: executor errors can
@@ -161,7 +158,12 @@ class QueueRunner:
                 # lands in ok:true responses and the on-disk queue JSONL.
                 message = sanitize_text(e)
                 attempt = self.store.record_attempt(item.queue_id, message)
-                if attempt.attempts >= self.config.max_attempts:
+                # Only an explicit local preflight refusal proves no external
+                # write started. Generic errors/timeouts are not retry proof.
+                retryable = (not getattr(e, "action_id", None) and
+                             getattr(e, "reason", None) in
+                             {"cooldown", "minute_budget", "daily_budget", "account_busy"})
+                if not retryable or attempt.attempts >= self.config.max_attempts:
                     self.store.set_status(item.queue_id, "failed")
                 else:
                     backoff = self.config.min_delay_seconds * attempt.attempts
@@ -176,8 +178,11 @@ class QueueRunner:
                 logger.warning("Queue item %s failed (attempt %d): %s",
                                item.queue_id, attempt.attempts, message)
                 continue
-            self.store.set_status(item.queue_id, "done",
-                                  completed_at=self.now_fn().isoformat())
+            try:
+                self.store.set_status(item.queue_id, "done",
+                                      completed_at=self.now_fn().isoformat())
+            except Exception:
+                raise QueueJournalError(item.queue_id, result.get("action_id")) from None
             report.succeeded += 1
             spent += 1
             report.executed.append({

@@ -6,6 +6,7 @@ and both stage DRAFTS ONLY — the approval gate decides what reaches X.
 """
 import asyncio
 import logging
+import time
 from typing import Any, Dict, List
 
 from xuse.features.analyzer.heuristics import keyword_relevance_score
@@ -15,6 +16,7 @@ from . import actions, executor as ex
 from .executor import Ctx, ToolError
 from .tools import guard, ok_
 from .annotations import STAGES_GENERATED_DRAFT
+from .browser_bridge import ordinary_read, uses_playwright
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +44,21 @@ def register_composite_tools(server, ctx: Ctx) -> None:
             raise ToolError("keywords must not be empty.")
         max_items = max(1, min(int(max_items), MAX_STAGE_ITEMS))
         seen: Dict[str, Any] = {}
-        async with ctx.session_pool.session(account_id) as browser_manager:
-            scraper = await asyncio.to_thread(TweetScraper, browser_manager, account_id)
+        if uses_playwright(ctx):
+            read_deadline = time.monotonic() + 10
             for kw in kws:
-                tweets = await asyncio.to_thread(scraper.scrape_tweets_by_keyword, kw, 10)
+                tweets = await ordinary_read(ctx, account_id, "search_tweets", kw, 10, deadline=read_deadline)
                 for tweet in tweets:
                     if tweet.tweet_id and tweet.tweet_id not in seen:
                         seen[tweet.tweet_id] = tweet
+        else:
+            async with ctx.session_pool.session(account_id) as browser_manager:
+                scraper = await asyncio.to_thread(TweetScraper, browser_manager, account_id)
+                for kw in kws:
+                    tweets = await asyncio.to_thread(scraper.scrape_tweets_by_keyword, kw, 10)
+                    for tweet in tweets:
+                        if tweet.tweet_id and tweet.tweet_id not in seen:
+                            seen[tweet.tweet_id] = tweet
         considered = len(seen)
         relevant = [t for t in seen.values()
                     if keyword_relevance_score(t.text_content or "", kws) >= MIN_RELEVANCE]

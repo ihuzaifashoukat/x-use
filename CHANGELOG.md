@@ -10,50 +10,82 @@ project follows [semantic versioning](https://semver.org/). See
 
 ## [Unreleased]
 
+No changes recorded yet.
+
+## [3.0.0] - 2026-10-09
+
 ### Added
 
-- **Every tool now declares MCP annotations** (`readOnlyHint`, `destructiveHint`,
-  `idempotentHint`, `openWorldHint`) via named constants in
-  `src/xuse/mcp/annotations.py`. The read-only vs write boundary existed only as
-  prose inside tool descriptions, so no host could enforce it and directory
-  scanners that treat annotations as the authoritative capability declaration saw
-  33 tools stating nothing at all.
-
-  The split: 14 read-only, 17 writes, 2 destructive (`remove_account`,
-  `remove_proxy`). Publishing is deliberately *not* marked destructive, because
-  posting adds rather than overwrites; reserving that flag for real deletion is
-  what keeps it worth reading. The two publish gates, `approve_draft` and
-  `process_queue`, are the tools carrying `openWorldHint` for a state change on X.
-  `tests/mcp/test_annotations.py` pins each set.
-
-- **`glama.json`** claiming the Glama listing, and a **`Dockerfile`** that builds
-  from source and starts the stdio server. Glama builds a container to introspect
-  a server; with no Dockerfile it could not enumerate tools, which is why the
-  listing showed none.
+- V3 Outreach: 70 MCP tools, seven workflow prompts, and seven
+  bundled agent skills, with a Claude Code plugin and local marketplace.
+- A dedicated `x-use-inbox` skill for contextual messages, unread/request
+  triage, structured notifications and uncertain-delivery recovery.
+- Structured inbox, conversation, notification, profile, thread, and media
+  reads. Inbox filters expose unread evidence and request folders; analytics
+  availability reports subscription gates explicitly.
+- Local outreach leads, campaigns, suppression, and delivery tracking, plus
+  reviewed multi-post threads and replies with durable segment progress.
+- An async Patchright runtime with isolated account contexts, proxy routing,
+  bounded session capacity, account locks, and owned-process cleanup.
+- One-command uv setup, a universal dependency lock, stable `X_USE_HOME`
+  configuration, and expanded installation diagnostics.
+- CI for Windows, Linux, and macOS on Python 3.10–3.14, installed-wheel browser
+  fixtures, dependency advisory checks, container checks, and release gates.
+- Explicit MCP tool annotations and Glama metadata for capability discovery.
 
 ### Changed
 
-- **Boot is roughly twice as fast**: the `openai` SDK was imported at module
-  scope in `core/llm_service/clients.py`, costing about three seconds on every
-  process start including MCP stdio boot, where the client is blocked on the
-  handshake. Availability is now probed with `importlib.util.find_spec` and the
-  SDK is imported only where a client is constructed. Boot plus introspection
-  went from 10.1s to 5.3s.
+- Supported same-page actions reuse verified browser state. Chat transitions
+  wait for the selected conversation's header and messages before returning.
+- MCP failures set protocol error status; startup reserves stdout for the
+  transport, and local diagnostics and campaign results are bounded.
+- Root and packaged setup skills document installation and client registration;
+  the existing deferred SDK import keeps startup work limited.
+- Containers separate credential-free introspection from the browser runtime.
+- Fresh interactive setup offers a Patchright settings preset and an inactive
+  reviewed-outreach account. Existing configurations remain the default to keep;
+  working Selenium batch presets are explicitly labelled and retain their purpose.
+- Contribution, setup, skill, configuration and runtime documentation describe
+  the current execution paths. Tracked data contains dummy input examples; the
+  obsolete account-metrics snapshot was removed.
 
-- **Tool descriptions and user-facing messages are ASCII.** Em dashes were
-  shipping in `tools/list` and mojibaking in consumers that assume latin-1.
+### Fixed
 
-- **The root `SKILL.md` is now the install-and-configure skill**, not a copy of
-  the router. An agent meeting this repository for the first time has no x-use
-  MCP tools, so the router was the wrong content for it: the root skill is
-  shell-first through install, `x-use doctor`, `x-use skills install`, and client
-  registration, stops at the client restart because a stdio server only loads at
-  startup, and only then moves to `add_account` and `update_account`.
+- Fresh PyPI installations include starter setup templates. Source preset
+  discovery is independent of `X_USE_HOME`, and setup creates private
+  configuration files while preserving existing files unless replaced explicitly.
+- Interrupted drafts, queued writes, and uncertain thread segments no longer
+  become automatic resend candidates. State is persisted before being exposed.
+- Private state permissions, cookie validation, reviewed attachment snapshots,
+  media download isolation, and legacy repost deduplication are enforced.
+- Inbox reload loops, stale conversation reads, timestamp-contaminated message
+  bodies, and pending-message confirmation during UI hydration have regression
+  coverage. Unknown read or reply state remains explicit.
+- Cold-start cancellation on older supported Python versions drains the pending
+  session before returning. Browser timeouts preserve the reserved action ID
+  needed to inspect uncertain writes. Repeated cancellation retains the account
+  lock until bookkeeping settles and preserves confirmed delivery outcomes.
+- Cross-platform tests isolate default state, cookie fallbacks and proxy counters
+  from local account files. Installed-package smoke checks resolve native macOS
+  temporary-directory paths before applying private-state checks. Browser
+  ownership capture accepts macOS process timestamps padded by `ps` while
+  retaining strict date and process-identity validation.
 
-  It is no longer generated by `scripts/sync_skills.py`. `tests/test_skills_sync.py`
-  pins the load-bearing steps and checks that the client-registration snippets
-  cannot drift apart from the packaged `x-use-setup` skill. Repo-only change; the
-  published package is unaffected.
+### Migration from 2.x
+
+- The default MCP backend is Patchright. Install its matching Chromium with
+  `python -m patchright install chromium`, or use the one-command setup script.
+  Existing Selenium batch workflows remain available with explicit legacy presets.
+- Use an absolute `X_USE_HOME` for stable private state. Import valid X cookies;
+  sample credentials are placeholders and cannot authenticate an account.
+- Interrupted approved drafts become uncertain, and interrupted queue writes
+  stop for inspection. Reconcile their outcomes before attempting another write.
+- MCP structured errors now also set `isError=true`; clients should inspect both
+  protocol status and the returned recovery metadata.
+
+Validation scope and remaining limitations are recorded in
+[the resilience audit](docs/RESILIENCE_AUDIT.md) and
+[the tool validation matrix](docs/TOOL_VALIDATION.md).
 
 ---
 
@@ -373,6 +405,7 @@ CLI.
 
 - `python src/main.py` still works, with a warning pointing to `x-use run`.
 
+[3.0.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.4.1...v3.0.0
 [2.4.1]: https://github.com/ihuzaifashoukat/x-use/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/ihuzaifashoukat/x-use/compare/v2.3.0...v2.3.1

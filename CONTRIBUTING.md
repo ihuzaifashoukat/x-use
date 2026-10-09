@@ -1,58 +1,119 @@
 # Contributing to x-use
 
-First off, thank you for considering contributing to x-use (formerly twitter-automation-ai)! Your help is appreciated.
+x-use is a Python MCP server and CLI for X. Start with a reproducible problem,
+keep changes scoped, and include evidence for the behavior being changed.
+Development targets Python 3.10–3.14 on Windows, Linux, and macOS.
 
-## How Can I Contribute?
+## Development setup
 
-There are many ways to contribute, from writing tutorials or blog posts, improving the documentation, submitting bug reports and feature requests or writing code which can be incorporated into the main project.
+Clone your fork and create a working branch. With uv installed:
 
-### The most valuable contributions right now
+```bash
+uv sync --locked --extra dev
+uv run --locked --extra dev x-use --help
+```
 
-*   **Selector fixes.** X changes its DOM regularly. PRs that update or harden selectors in `src/xuse/features/scraper/` and `src/xuse/features/publisher/` are the most valuable contributions this project gets, include a DOM snippet showing what changed.
-*   **Skills and personas.** The bundled agent skills live in `src/xuse/skills_pack/`, edit them there, then run `python scripts/sync_skills.py` to sync the marketplace copy. New persona presets go under `presets/personas/`.
-*   **Presets.** New account presets (`presets/accounts/`) and settings presets (`presets/settings/`) for real-world use cases.
-*   **Docs.** Clarify setup steps, add troubleshooting entries, improve `docs/CONFIG_REFERENCE.md` and `docs/MCP_GUIDE.md`.
-*   **MCP tool ideas.** Open an issue describing the tool call you wish existed (name, inputs, expected behavior). Note that the tool surface is pinned by a contract test (`tests/mcp/test_contract.py`, `EXPECTED_TOOLS`), any new tool or parameter must update it.
-*   **Tests.** pytest coverage for pure logic; nothing in the suite may need a network or a browser.
+The checkout also supports `python3 scripts/setup_uv.py --dev` (Windows:
+`py -3 scripts/setup_uv.py --dev`). This installs matching Chromium and runs
+diagnostics. Account setup is separate; ordinary development and CI do not
+need your X cookies or an LLM key.
 
-### Reporting Bugs
+## Where changes belong
 
-*   **Ensure the bug was not already reported** by searching on GitHub under [Issues](https://github.com/ihuzaifashoukat/x-use/issues).
-*   If you're unable to find an open issue addressing the problem, [open a new one](https://github.com/ihuzaifashoukat/x-use/issues/new). Be sure to include a **title and clear description**, as much relevant information as possible, and a **code sample or an executable test case** demonstrating the expected behavior that is not occurring.
-*   Describe the **environment** in which you encountered the bug (e.g., Python version, OS, browser version if applicable).
+| Area | Files |
+|---|---|
+| Current browser behavior, inbox, notifications, threads | `src/xuse/browser/` |
+| MCP schemas, workflows, approval and recovery | `src/xuse/mcp/` |
+| Local leads, campaigns and suppression | `src/xuse/outreach/` |
+| Private state, configuration and platform permissions | `src/xuse/core/` |
+| Legacy Selenium batch engine | `src/xuse/features/`, `src/xuse/orchestrator.py` |
+| Reusable configuration and writing personas | `presets/` |
+| Canonical bundled agent skills | `src/xuse/skills_pack/` |
+| Installation and CI checks | `scripts/`, `.github/workflows/` |
 
-### Suggesting Enhancements
+`data/` is primarily runtime state, not a library of configuration presets.
+Only the documented dummy examples belong in Git. See [presets](presets/README.md)
+and [data](data/README.md) before changing either directory.
 
-*   Open a new issue to discuss your suggested enhancement. Clearly describe the proposed enhancement and its potential benefits.
-*   Provide a clear and concise description of what you want to happen.
-*   Explain why this enhancement would be useful.
-*   If possible, provide a code snippet or an example of how the enhancement might look or work.
+## Tests
 
-### Pull Requests
+Run the regression suite:
 
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name` or `bugfix/issue-number`).
-3.  Make your changes. The package lives under `src/xuse/` (`xuse/core`, `xuse/features`, `xuse/mcp`, `xuse/utils`, `xuse/models`).
-4.  Ensure your code lints and follows the project's coding style (if one is established).
-5.  Add tests for your changes if applicable. Run the suite with `python -m pytest`, it must pass with no network or browser.
-6.  Commit your changes (`git commit -m 'feat: Add some amazing feature'`). Follow [Conventional Commits](https://www.conventionalcommits.org/) if possible.
-7.  Push to the branch (`git push origin feature/your-feature-name`).
-8.  Open a pull request to the `main` branch of the original repository.
-9.  Clearly describe your pull request, including the problem it solves or the feature it adds. Link to any relevant issues.
+```bash
+uv run --locked --extra dev pytest -q -m "not smoke"
+```
 
-## Coding Conventions
+Tests use temporary state and synthetic content. Some tests launch a local
+browser or use loopback networking; they do not use a real X account. Browser
+fixtures may skip when their executable is absent. To require the bundled
+Patchright browser fixtures, install Chromium and set
+`XUSE_TEST_BROWSER_DRIVER=patchright`, `XUSE_TEST_BROWSER_CHANNEL=chromium`, and
+`XUSE_REQUIRE_BROWSER_TESTS=1` in your shell:
 
-*   Follow PEP 8 for Python code.
-*   Write clear and concise comments where necessary.
-*   Ensure your code is well-tested.
-*   Never commit `config/accounts.json`, cookie files, `.env`, or API keys.
+```bash
+uv run --locked --extra dev python -m patchright install chromium
+uv run --locked --extra dev pytest -q tests/browser
+```
 
-## Code of Conduct
+Linux may need `patchright install --with-deps chromium` with permission to
+install OS packages. CI runs source and synthetic process-identity checks on
+every supported Python/OS combination. It separately requires native scenarios
+against a clean installed wheel on Python 3.12 across all three OSes, using both
+Patchright and Playwright with their matching Chromium installations. An editable
+source import cannot hide packaging mistakes, and a missing selected browser
+fails that required partition instead of silently skipping it.
+`scripts/ci_browser_smoke.py` checks CLI/MCP startup and synthetic browser
+behavior; it is different from the reserved `smoke` marker for authorized
+live-account tests.
 
-This project and everyone participating in it is governed by the [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior.
+For a bug, add a regression for the observable failure: wrong target, stale
+conversation, duplicate write, lost recovery identity, or leaked account state.
+Do not weaken safety assertions to make an unsupported environment pass. DOM
+fixtures must use fictional identities and messages. Never include a real inbox
+dump, decrypted conversation, PIN, cookie, token, or browser profile.
 
-## Questions?
+## MCP and skills
 
-If you have any questions, feel free to open an issue and tag it as a `question`.
+New tools need explicit annotations, bounded input/output, structured errors,
+and updates to `tests/mcp/test_contract.py` and the public tool documentation.
+Keep exact target verification and durable action identity through cancellation
+and timeouts. An uncertain external write must not be automatically replayed.
+Local draft/queue changes and external submissions are distinct effects.
 
-We look forward to your contributions!
+Edit packaged skills in `src/xuse/skills_pack/`, then run
+`uv run python scripts/sync_skills.py` to update the plugin copies. The root
+`SKILL.md` is a separate installation skill. Validate with
+`tests/test_skills_pack.py`, `tests/test_skills_sync.py`, and
+`tests/test_install_manifests.py`. Guidance must respect existing authorization,
+direct-mode settings, and queue auto-drain without promising universal approval
+gates or complete visible-page history.
+
+## Pull requests and releases
+
+- Explain the problem, resulting behavior, tests, and remaining limitations.
+- Use focused commits and include related tests with the change.
+- Keep credentials, account journals, `.env`, and local diagnostics untracked.
+- Run relevant tests and `git diff --check`; let the supported-platform CI finish.
+- Update the changelog and affected documentation. A passing fixture is not proof
+  that every tool worked on a live account.
+
+The version source is `src/xuse/__init__.py`; package metadata reads it
+dynamically. A release preparation also updates `server.json`, plugin product
+versions in both marketplaces, the plugin manifest, `uv.lock`, and the changelog.
+Run `tests/test_version_integrity.py`, build with `uv run python -m build`, and
+check with `uv run python -m twine check --strict dist/*` (a POSIX shell expands
+the glob; use explicit distribution paths in shells that do not).
+Tagging and publishing are maintainer actions after review and passing CI.
+The release workflow verifies the tag and runs CI before PyPI/MCP publication.
+
+## Reports and community
+
+Search [existing issues](https://github.com/ihuzaifashoukat/x-use/issues) before
+opening a bug report. Include Python/OS/browser versions, backend, sanitized
+errors, and a minimal reproduction. Report security-sensitive issues privately
+to [ihuzaifashoukat@gmail.com](mailto:ihuzaifashoukat@gmail.com), without sending
+account credentials. Do not publish exploit details or private account data in
+an issue while a report is being investigated.
+
+Participation follows the [Code of Conduct](CODE_OF_CONDUCT.md). Contributions
+are distributed under the existing [MIT license](LICENSE).

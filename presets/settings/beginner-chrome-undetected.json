@@ -1,11 +1,8 @@
 {
-  "api_keys": {
-    "gemini_api_key": "YOUR_GEMINI_API_KEY_HERE_OR_LEAVE_BLANK_IF_USING_ENV",
-    "openai_api_key": "YOUR_OPENAI_API_KEY_HERE",
-    "azure_openai_api_key": "YOUR_AZURE_OPENAI_API_KEY_HERE",
-    "azure_openai_endpoint": "YOUR_AZURE_OPENAI_ENDPOINT_HERE",
-    "azure_openai_deployment": "YOUR_AZURE_OPENAI_DEPLOYMENT_NAME_HERE",
-    "azure_api_version": "2024-05-01-preview"
+  "llm": {
+    "api_key": "",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
   },
   "twitter_automation": {
     "response_interval_seconds": 300,
@@ -43,8 +40,6 @@
       "max_likes_per_run": 4,
       "enable_thread_analysis": true,
       "llm_settings_for_post": {
-        "service_preference": "openai",
-        "model_name_override": "gpt-4o",
         "max_tokens": 1200,
         "temperature": 0.68
       }
@@ -73,5 +68,9 @@
     "page_load_timeout_seconds": 30,
     "script_timeout_seconds": 30,
     "cookie_domain_url": "https://x.com"
+  },
+  "mcp": {
+    "browser_backend": "selenium",
+    "draft_mode": true
   }
 }

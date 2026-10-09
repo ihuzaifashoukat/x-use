@@ -17,7 +17,7 @@ class FakeTweet:
         self.text_content = text
         self.media = []
 
-    def model_dump(self, mode="json"):
+    def model_dump(self, mode="json", exclude=None):
         return {"tweet_id": self.tweet_id, "user_handle": self.user_handle,
                 "text_content": self.text_content, "media": []}
 

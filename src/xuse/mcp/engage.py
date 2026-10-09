@@ -22,6 +22,8 @@ from .executor import Ctx, ToolError
 from .sessions import SessionError
 from .tools import guard, ok_
 from .annotations import PUBLISHES_TO_X
+from .browser_bridge import search_session
+from xuse.browser.errors import SessionError as BrowserSessionError
 
 logger = logging.getLogger(__name__)
 
@@ -87,19 +89,16 @@ def register_engage_tool(server, ctx: Ctx) -> None:
         }
         analyzer = TweetAnalyzer(ex.get_llm(ctx), account_config=model)
         planned: List[Dict[str, Any]] = []
-        async with ctx.session_pool.session(account_id) as browser_manager:
-            scraper = await asyncio.to_thread(TweetScraper, browser_manager, account_id)
+        async with search_session(ctx, account_id, TweetScraper) as search:
             for keyword in keywords:
                 if all(quotas[a] <= 0 for a in requested):
                     break
-                tweets = await asyncio.to_thread(
-                    scraper.scrape_tweets_by_keyword, keyword, max(5, max_actions * 2)
-                )
+                tweets = await search.tweets(keyword, max(5, max_actions * 2))
                 for tweet in tweets:
                     if all(quotas[a] <= 0 for a in requested):
                         break
                     if tweet.user_handle and TwitterOrchestrator._is_own_tweet(
-                        tweet.user_handle, model, browser_manager
+                        tweet.user_handle, model, search.manager
                     ):
                         continue
                     if not await _relevance_passes(ctx, analyzer, model, tweet):
@@ -149,7 +148,7 @@ def register_engage_tool(server, ctx: Ctx) -> None:
                 else:
                     result = await action_executors.exec_retweet(ctx, account_id, tweet.tweet_id, url, tweet.text_content or "")
                 results.append(result)
-            except (ToolError, SessionError) as e:
+            except (ToolError, SessionError, BrowserSessionError) as e:
                 results.append({"account": account_id, "action": item["action"],
                                 "tweet_id": tweet.tweet_id, "success": False, "error": ex.sanitize_text(e)})
             except Exception as e:

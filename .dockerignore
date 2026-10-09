@@ -1,0 +1,25 @@
+# Deny by default: credentials, account state, .env, .git, .venv, data,
+# caches and test/build artifacts never enter either image's build context.
+**
+
+# Dockerfile copies only package metadata and the source package. Runtime
+# credentials and state are mounted separately; CI fixtures are mounted too.
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+!src/xuse/
+!src/xuse/**
+
+# Keep generated or private files out even if placed under the source tree.
+src/**/__pycache__/
+src/**/*.pyc
+src/**/*.pyo
+src/**/.env
+src/**/.env.*
+src/**/accounts.json
+src/**/*cookies*.json
+src/**/.cache/
+src/**/data/

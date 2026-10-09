@@ -3,8 +3,11 @@ import time
 import logging
 import mimetypes
 import random
+import re
+import tempfile
 from typing import Optional, Tuple, Dict, Any
 from urllib.parse import urlparse, unquote
+from urllib.parse import urlsplit
 
 import requests
 
@@ -37,16 +40,40 @@ ALLOWED_CONTENT_TYPES = {
 }
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+_UNSAFE_FILENAME_CHARS = re.compile(r'[\x00-\x1f<>:"/\\|?*]')
+_WINDOWS_DEVICE_NAME = re.compile(r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)', re.IGNORECASE)
+
+
+def _safe_filename(filename: str) -> str:
+    """Keep only a safe filename component from an untrusted response header."""
+    # Treat both separator styles as paths on every platform. This prevents a
+    # Windows path from being interpreted as a filename on POSIX and vice versa.
+    filename = unquote(str(filename)).replace("\\", "/").rsplit("/", 1)[-1]
+    filename = _UNSAFE_FILENAME_CHARS.sub("_", filename).strip().rstrip(" .")
+    if not filename or filename in (".", ".."):
+        return ""
+    if _WINDOWS_DEVICE_NAME.match(filename):
+        filename = "_" + filename
+    return filename
+
+
+def _path_is_within(path: str, directory: str) -> bool:
+    """Check the resolved path, including existing symlink targets."""
+    try:
+        return os.path.commonpath((os.path.realpath(directory), os.path.realpath(path))) == os.path.realpath(directory)
+    except (OSError, ValueError):
+        return False
 
 
 def _build_requests_context(
     browser_manager: Optional["BrowserManager"],
     extra_headers: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
-    """Compose kwargs for requests calls (cookies, headers, proxies) from BrowserManager.
+    """Compose public-media request kwargs without account credentials.
 
-    - Uses live Selenium driver cookies if available, else account-config cookies if preloaded.
-    - Applies proxy from BrowserManager if configured.
+    Media URLs can point at arbitrary hosts or redirect there. Never forward
+    Selenium/account cookies to these endpoints. The configured account proxy
+    remains the only account-derived request setting.
     """
     headers = dict(DEFAULT_HEADERS)
     if extra_headers:
@@ -59,24 +86,24 @@ def _build_requests_context(
         proxy = browser_manager.effective_proxy
         kwargs["proxies"] = {"http": proxy, "https": proxy}
 
-    # Cookies
-    cookies_dict: Dict[str, str] = {}
-    try:
-        if browser_manager and getattr(browser_manager, "driver", None):
-            for c in (browser_manager.driver.get_cookies() or []):
-                if c.get("name") and c.get("value"):
-                    cookies_dict[c["name"]] = c["value"]
-        elif browser_manager and getattr(browser_manager, "cookies_data", None):
-            for c in (browser_manager.cookies_data or []):
-                if c.get("name") and c.get("value"):
-                    cookies_dict[c["name"]] = c["value"]
-    except Exception as e:
-        logger.debug("Failed to extract cookies from BrowserManager: %s", e)
-
-    if cookies_dict:
-        kwargs["cookies"] = cookies_dict
-
     return kwargs
+
+
+def _new_requests_session() -> requests.Session:
+    """Create a request session that cannot acquire ambient netrc credentials."""
+    session = requests.Session()
+    # requests otherwise consults environment proxy/netrc configuration. The
+    # caller supplies the configured proxy explicitly through _build_requests_context.
+    session.trust_env = False
+    return session
+
+
+def _safe_url_host(url: str) -> str:
+    """Return a log-safe host identifier without URL credentials or query data."""
+    try:
+        return urlsplit(url).hostname or "unknown-host"
+    except (TypeError, ValueError):
+        return "unknown-host"
 
 
 def _derive_filename(url: str, response: requests.Response) -> str:
@@ -90,9 +117,10 @@ def _derive_filename(url: str, response: requests.Response) -> str:
         try:
             disp = cd.split("filename=")[-1].strip('"; ')
             if disp:
-                base_name = unquote(disp)
+                base_name = disp
         except Exception:
             pass
+    base_name = _safe_filename(base_name)
     if not base_name or "." not in base_name:
         ctype = response.headers.get("content-type", "").split(";")[0].strip()
         ext = ALLOWED_CONTENT_TYPES.get(ctype) or mimetypes.guess_extension(ctype) or ".bin"
@@ -102,13 +130,21 @@ def _derive_filename(url: str, response: requests.Response) -> str:
 
 def _ensure_unique_path(dirpath: str, filename: str) -> str:
     os.makedirs(dirpath, exist_ok=True)
-    file_path = os.path.join(dirpath, filename)
+    directory = os.path.realpath(dirpath)
+    filename = _safe_filename(filename)
+    if not filename:
+        filename = "media"
+    file_path = os.path.join(directory, filename)
+    if not _path_is_within(file_path, directory):
+        raise ValueError("Media destination escapes the output directory.")
     if not os.path.exists(file_path):
         return file_path
     name, ext = os.path.splitext(file_path)
     counter = 1
     while os.path.exists(file_path):
         file_path = f"{name}_{counter}{ext}"
+        if not _path_is_within(file_path, directory):
+            raise ValueError("Media destination escapes the output directory.")
         counter += 1
     return file_path
 
@@ -148,87 +184,99 @@ def download_with_retries(
     backoff = 1.0
     last_error = None
     req_ctx = _build_requests_context(browser_manager)
-    content_length_expected: Optional[int] = None
-    for attempt in range(max_retries + 1):
-        try:
-            logger.info("Downloading media from: %s (attempt %s)", url, attempt + 1)
-            # HEAD to get metadata if available
+    session = _new_requests_session()
+    try:
+        for attempt in range(max_retries + 1):
             try:
-                head_resp = requests.head(url, allow_redirects=True, timeout=timeout, **req_ctx)
-                if head_resp.ok:
-                    cl = head_resp.headers.get("content-length")
-                    if cl and cl.isdigit():
-                        content_length_expected = int(cl)
-            except Exception:
-                pass
+                logger.info("Downloading public media from %s (attempt %s)", _safe_url_host(url), attempt + 1)
+                # Retain the metadata probe, but never use its length to validate
+                # the GET body: redirects/variants can change it between requests.
+                head_resp = None
+                try:
+                    head_resp = session.head(url, allow_redirects=True, timeout=timeout, **req_ctx)
+                except Exception:
+                    pass
+                finally:
+                    if head_resp is not None:
+                        head_resp.close()
 
-            with requests.get(url, stream=True, timeout=timeout, allow_redirects=True, **req_ctx) as resp:
-                if not resp.ok:
-                    # Carry the response so the retry policy below can tell
-                    # retryable statuses (429/5xx) from hard failures (404…).
-                    raise requests.HTTPError(f"HTTP {resp.status_code} for {url}", response=resp)
-                ok, bad_type = _validate_content_type(resp)
-                if not ok:
-                    raise _DisallowedContentType(
-                        f"Refusing to save disallowed content-type '{bad_type}' for {url}"
-                    )
-                filename = _derive_filename(url, resp)
-                file_path = _ensure_unique_path(out_dir, filename)
+                with session.get(url, stream=True, timeout=timeout, allow_redirects=True, **req_ctx) as resp:
+                    if not resp.ok:
+                        # Carry the response so retry policy distinguishes 404/403 from 5xx.
+                        raise requests.HTTPError(f"HTTP {resp.status_code} for {_safe_url_host(url)}", response=resp)
+                    ok, bad_type = _validate_content_type(resp)
+                    if not ok:
+                        raise _DisallowedContentType(
+                            f"Refusing to save disallowed content-type '{bad_type}' for {_safe_url_host(url)}"
+                        )
+                    filename = _derive_filename(url, resp)
+                    file_path = _ensure_unique_path(out_dir, filename)
 
-                bytes_written = 0
-                tmp_path = f"{file_path}.part"
-                with open(tmp_path, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=1024 * 128):
-                        if chunk:
-                            f.write(chunk)
-                            bytes_written += len(chunk)
-                # Verify size if we know expected length
-                if content_length_expected is not None and bytes_written != content_length_expected:
+                    bytes_written = 0
+                    directory = os.path.realpath(out_dir)
+                    if not _path_is_within(file_path, directory):
+                        raise ValueError("Media destination escapes the output directory.")
+                    fd, tmp_path = tempfile.mkstemp(prefix=".xuse-media-", suffix=".part", dir=directory)
                     try:
-                        os.remove(tmp_path)
-                    except OSError:
-                        pass
-                    raise IOError(
-                        f"Content length mismatch for {url}: expected {content_length_expected}, got {bytes_written}"
-                    )
-                os.replace(tmp_path, file_path)
-                logger.info("Media downloaded successfully to: %s", file_path)
-                return file_path
-        except _DisallowedContentType as e:
-            last_error = e
-            logger.error("%s", e)
-            break
-        except requests.HTTPError as e:
-            last_error = e
-            status = getattr(getattr(e, "response", None), "status_code", None)
-            if status is not None and not _should_retry(status):
-                # 404/403/etc. will not heal with backoff — fail fast.
-                logger.error("Non-retryable HTTP %s for %s; not retrying.", status, url)
+                        with os.fdopen(fd, "wb") as f:
+                            for chunk in resp.iter_content(chunk_size=1024 * 128):
+                                if chunk:
+                                    f.write(chunk)
+                                    bytes_written += len(chunk)
+                        # requests transparently decompresses supported encodings,
+                        # so compare only an unencoded GET response's own length.
+                        content_encoding = resp.headers.get("content-encoding", "").strip().lower()
+                        content_length = resp.headers.get("content-length", "")
+                        if (content_encoding in ("", "identity") and content_length.isdigit()
+                                and bytes_written != int(content_length)):
+                            raise IOError(
+                                f"Content length mismatch for {_safe_url_host(url)}: "
+                                f"expected {content_length}, got {bytes_written}"
+                            )
+                        os.replace(tmp_path, file_path)
+                    finally:
+                        try:
+                            os.unlink(tmp_path)
+                        except FileNotFoundError:
+                            pass
+                    logger.info("Media downloaded successfully to: %s", file_path)
+                    return file_path
+            except _DisallowedContentType as e:
+                last_error = e
+                logger.error("Refusing media response with disallowed content type: %s", type(e).__name__)
                 break
-            logger.warning("Download error for %s: %s", url, e)
-            if attempt < max_retries:
-                # jittered exponential backoff
-                sleep_for = backoff + random.uniform(0, 0.5)
-                time.sleep(sleep_for)
-                backoff = min(backoff * 2, 8.0)
-                continue
-        except requests.exceptions.RequestException as e:
-            last_error = e
-            logger.warning("Download error for %s: %s", url, e)
-            if attempt < max_retries:
-                # jittered exponential backoff
-                sleep_for = backoff + random.uniform(0, 0.5)
-                time.sleep(sleep_for)
-                backoff = min(backoff * 2, 8.0)
-                continue
-        except Exception as e:
-            last_error = e
-            logger.error("Unexpected error during download from %s: %s", url, e)
-            if attempt < max_retries:
-                sleep_for = backoff + random.uniform(0, 0.5)
-                time.sleep(sleep_for)
-                backoff = min(backoff * 2, 8.0)
-                continue
-            break
-    logger.error("Failed to download %s after %s attempts: %s", url, max_retries + 1, last_error)
-    return None
+            except requests.HTTPError as e:
+                last_error = e
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                if status is not None and not _should_retry(status):
+                    logger.error("Non-retryable HTTP %s from %s; not retrying.", status, _safe_url_host(url))
+                    break
+                logger.warning("Download request failed for %s (%s).", _safe_url_host(url), type(e).__name__)
+                if attempt < max_retries:
+                    sleep_for = backoff + random.uniform(0, 0.5)
+                    time.sleep(sleep_for)
+                    backoff = min(backoff * 2, 8.0)
+                    continue
+            except requests.exceptions.RequestException as e:
+                last_error = e
+                logger.warning("Download request failed for %s (%s).", _safe_url_host(url), type(e).__name__)
+                if attempt < max_retries:
+                    sleep_for = backoff + random.uniform(0, 0.5)
+                    time.sleep(sleep_for)
+                    backoff = min(backoff * 2, 8.0)
+                    continue
+            except Exception as e:
+                last_error = e
+                logger.error("Unexpected download failure for %s (%s).", _safe_url_host(url), type(e).__name__)
+                if attempt < max_retries:
+                    sleep_for = backoff + random.uniform(0, 0.5)
+                    time.sleep(sleep_for)
+                    backoff = min(backoff * 2, 8.0)
+                    continue
+                break
+        logger.error("Failed to download media from %s after %s attempts (%s).",
+                     _safe_url_host(url), max_retries + 1,
+                     type(last_error).__name__ if last_error is not None else "unknown error")
+        return None
+    finally:
+        session.close()

@@ -85,7 +85,7 @@ async def test_cancel_during_pacing_sleep_skips_execution(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_drain_cancelled_mid_executor_returns_item_to_pending(tmp_path):
+async def test_drain_cancelled_mid_executor_never_replays_item(tmp_path):
     started = asyncio.Event()
     release = asyncio.Event()
 
@@ -105,14 +105,14 @@ async def test_drain_cancelled_mid_executor_returns_item_to_pending(tmp_path):
         await task
     release.set()  # let any orphaned work unwind
 
-    # No zombie: the item is pending again in the SAME process.
-    assert store.get(item.queue_id).status == "pending"
+    # The external write may already have landed; inspection is required.
+    assert store.get(item.queue_id).status == "failed"
     assert store.get(item.queue_id).attempts == 0
 
-    # A later drain picks it up instead of skipping it forever.
+    # A later drain must not execute the unconfirmed action again.
     report = await runner.drain("acc1", 5)
-    assert report.succeeded == 1
-    assert store.get(item.queue_id).status == "done"
+    assert report.succeeded == 0
+    assert store.get(item.queue_id).status == "failed"
 
 
 # ---------------------------------------------------------------------------

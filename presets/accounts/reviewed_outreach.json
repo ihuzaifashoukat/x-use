@@ -1,0 +1,20 @@
+[
+  {
+    "account_id": "your_account_id_here",
+    "is_active": false,
+    "cookie_file_path": "data/cookies/your_cookies.json",
+    "proxy": null,
+    "post_to_community": false,
+    "target_keywords": [],
+    "competitor_profiles": [],
+    "persona": "Write brief, specific messages in a warm, professional voice. Refer only to verified authored posts and facts. Keep outreach relevant to an existing connection or clear shared interest. Respect opt-outs and review each exact message before approval.",
+    "action_config": {
+      "enable_competitor_reposts": false,
+      "enable_keyword_replies": false,
+      "enable_keyword_retweets": false,
+      "enable_content_curation_posts": false,
+      "enable_liking_tweets": false,
+      "enable_community_engagement": false
+    }
+  }
+]

@@ -13,6 +13,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 import pytest
+from mcp.types import CallToolResult
 
 from xuse.mcp.drafts import DraftStore
 from xuse.mcp.server import create_server
@@ -102,7 +103,11 @@ async def call_tool(server, name: str, arguments: Optional[Dict[str, Any]] = Non
     output wrapping). If a tool ever raised through the guard instead of
     returning an error envelope, this would raise and fail the test.
     """
-    content, _structured = await server.call_tool(name, arguments or {})
+    result = await server.call_tool(name, arguments or {})
+    if isinstance(result, CallToolResult):
+        content = result.content
+    else:
+        content, _structured = result
     assert content, f"tool '{name}' returned no content blocks"
     return json.loads(content[0].text)
 

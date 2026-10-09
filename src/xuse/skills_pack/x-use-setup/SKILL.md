@@ -5,21 +5,33 @@ description: Zero-knowledge onboarding for x-use that verifies the install, regi
 
 # x-use setup
 
-Goal: a working account, configured conversationally. The user should never
-edit a config file by hand. Work through these steps in order, skipping any
-that are already done, and confirm each before moving on.
+Configure the requested account conversationally. Skip completed steps and honor
+the setup authorization for routine local changes; ask for missing account,
+persona or credential choices. Do not use setup as authorization to publish.
 
 ## 1. Verify the install
 
-- Run `x-use doctor`. It checks Chrome/driver, cookies, LLM key, proxies.
-- If `x-use` is not found: `pip install x-use-mcp`, then re-run doctor.
+- Run `x-use doctor`. It checks the selected Patchright/Playwright browser,
+  cookies, LLM key and proxies without launching a browser.
+- If working in a checkout, use `py -3 scripts/setup_uv.py` on Windows or
+  `python3 scripts/setup_uv.py` on macOS/Linux and use the `.venv` executable.
+  Otherwise install `pip install x-use-mcp` and
+  `python -m patchright install chromium`, then re-run doctor.
 - If the MCP server is not registered in this client yet, register it, then
-  ask the user to restart the client:
+  reload the connection if the client supports it, or ask the user to restart
+  the client. Continue tool-dependent work only after tools appear.
+  Use the absolute executable path and
+  absolute data directory printed by the installer; set `X_USE_HOME` in the
+  MCP server environment so configuration and state stay stable across client
+  working directories:
   - Claude Desktop (`claude_desktop_config.json`):
-    `{"mcpServers": {"x-use": {"command": "x-use", "args": ["mcp"]}}}`
-  - Claude Code: `claude mcp add x-use -- x-use mcp`
+    `{"mcpServers": {"x-use": {"command": "/absolute/path/to/x-use/.venv/bin/x-use", "args": ["mcp"], "env": {"X_USE_HOME": "/absolute/path/to/x-use-data"}}}}`
+  - Cursor, Windsurf, and other clients using `mcpServers` JSON: use the same
+    `command`, `args`, and `env` fields shown for Claude Desktop.
+  - Claude Code: `claude mcp add --scope user x-use --env X_USE_HOME=/absolute/path/to/x-use-data -- /absolute/path/to/x-use/.venv/bin/x-use mcp`
   - Codex (`~/.codex/config.toml`):
-    `[mcp_servers.x-use]` with `command = "x-use"`, `args = ["mcp"]`
+    `[mcp_servers.x-use]` with the absolute `command` path and `args = ["mcp"]`,
+    plus `[mcp_servers.x-use.env]` with `X_USE_HOME = "/absolute/path/to/x-use-data"`.
 
 ## 2. Account + cookies
 
@@ -32,20 +44,25 @@ Ask: "What should this account be called (a short id like `main` or
 
 Then call `add_account(account_id, cookie_file=<path>)`. The file is
 validated and copied server-side; cookie values never pass through the chat.
-Verify with `get_account_health(account)`; cookie status should be valid.
+Verify with `get_account_health(account)`; it checks the local cookie file,
+not whether X currently accepts the session. Inspect reported problems and use
+a bounded browser read to verify login; stop for login or account challenges.
 
 ## 3. Niche and keywords
 
-Ask: "What niche are you in, which keywords should I watch, and whose posts
-do you want to engage with (profiles)?" Apply with
+Ask for the niche, keywords, target profiles and the account's actual X handle.
+Apply with
 `update_account(account, target_keywords=[...],
-competitor_profiles=[...])`.
+competitor_profiles=[...], self_handles=["yourhandle"])`. `self_handles` enables
+the own-post guard. Batch account edits where possible: each update closes its
+warm browser session.
 
 ## 4. Persona
 
-Ask how they want to sound. Offer the three starter personas from
-`presets/personas/` (builder, founder, curator) as starting points, let the
-user pick or dictate their own, then apply with
+Ask how they want to sound. In a checkout, the personas in `presets/personas/`
+(builder, founder, curator) can serve as starting points; these presets are not
+included in the installed skill pack. Otherwise draft the requested voice, then
+apply with
 `update_account(account, persona=<text>)`. Keep it under 4000 chars,
 markdown, covering: voice, topics, reply style, what to avoid, 1-2 example
 replies.
@@ -55,12 +72,26 @@ replies.
 - Multi-account: repeat from step 2, and ask about proxies, added with
   `add_proxy(pool, proxy_url)` and assign with
   `update_account(account, proxy="pool:<name>")`.
-- Background automation (unattended `"auto"` text): needs one
+- Server-generated posts/replies and unattended `"auto"` text need one
   OpenAI-compatible key in `config/settings.json` under `llm`
   (`api_key`, `base_url`, `model`). Interactive use needs no key at all.
 
 ## 6. Prove it works
 
-Stage something real but harmless: use x-use-engage to research one reply
-draft, or x-use-content to stage one post draft. Show it via `list_drafts`.
-Tell the user: nothing posts until you say `approve_draft(<id>)`.
+With `mcp.draft_mode=true` (default), use x-use-engage or x-use-content to stage
+one requested reply or post and show its full payload. Ordinary writes execute
+immediately when draft mode is disabled. `approve_draft` executes reviewed
+drafts; queued actions run via `process_queue` or opt-in auto-drain, and legacy
+`run_cycle` runs immediately. Preparation alone does not authorize those gates.
+
+Use **x-use-inbox** for requested message and notification workflows.
+Requested inbox verification uses `get_inbox(account=..., folder="inbox",
+inbox_filter="unread", limit=5)`; requests and other folders are separate, and
+results cover only visible conversations. Reads never accept requests.
+`unread=null` means the UI supplied no reliable read-state evidence. Opening a
+chat may mark it as read; visiting notifications can do the same. If
+`pin_required`, use `unlock_inbox(account=..., pin_env_var="XUSE_INBOX_PIN")`
+after the owner sets that server variable; never request a PIN in chat or store it
+in drafts. Stop for unsupported UI or account challenges. Messages and follows
+always need individual draft approval, and an uncertain write needs explicit
+outcome reconciliation after inspecting X before any retry.

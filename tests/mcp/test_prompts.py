@@ -17,21 +17,9 @@ EXPECTED = {
     "review_and_publish": {"account"},
     "daily_check": {"account"},
     "setup_account": set(),
+    "outreach_message": {"account", "profile"},
+    "thread_workflow": {"account", "tweet_url"},
 }
-
-# Every tool name a prompt is allowed to mention. Anything else is either a
-# typo or an invented capability, and both mislead the client.
-REAL_TOOLS = {
-    "list_accounts", "get_account", "get_metrics", "search_tweets", "search_profile",
-    "get_tweet", "prepare_reply", "list_queue", "list_drafts", "get_draft",
-    "reject_draft", "get_run_status", "get_account_health", "list_proxies",
-    "post_tweet", "generate_and_post", "reply_to_tweet", "engage", "run_cycle",
-    "approve_draft", "queue_post", "queue_engagement", "cancel_queued_action",
-    "process_queue", "research_and_stage", "draft_post_variations", "add_account",
-    "update_account", "set_account_active", "remove_account", "add_proxy",
-    "remove_proxy", "test_proxy",
-}
-
 
 async def render(server, name, arguments=None) -> str:
     result = await server.get_prompt(name, arguments or {})
@@ -71,7 +59,10 @@ async def test_prompts_only_name_tools_that_exist(mcp_server, name):
     body = await render(mcp_server, name)
     # Any identifier written as a call, e.g. `get_account("x")` or process_queue(
     called = set(re.findall(r"\b([a-z_][a-z0-9_]{4,})\(", body))
-    invented = {c for c in called if c not in REAL_TOOLS}
+    # Compare against the actual registry, so newly added tools do not require
+    # an unrelated test-only catalog and removed tools cannot hide behind it.
+    real_tools = {tool.name for tool in await mcp_server.list_tools()}
+    invented = called - real_tools
     assert not invented, f"{name} references non-existent tools: {sorted(invented)}"
 
 
@@ -85,7 +76,7 @@ async def test_publishing_prompt_states_the_approval_rule(mcp_server):
     # Must not tell a client to loop approvals.
     assert "Never loop over the whole list" in body
     # Must say the post URL is not returned, or agents invent one.
-    assert "approve_draft returns no post URL" in body
+    assert "result.evidence" in body and "Legacy results may omit it" in body
 
 
 @pytest.mark.asyncio

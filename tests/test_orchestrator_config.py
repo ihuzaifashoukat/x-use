@@ -19,12 +19,12 @@ in its ``finally`` block; tests set it to 0 to stay fast.
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import xuse.orchestrator as orchestrator_module
-from xuse.models import AccountConfig, ActionConfig
+from xuse.models import AccountConfig, ActionConfig, ScrapedTweet
 from xuse.orchestrator import TwitterOrchestrator
 
 # Every pipeline gate switched off so an "active" account flows straight
@@ -308,3 +308,36 @@ class TestIsOwnTweet:
         browser = SimpleNamespace()  # no logged_in_handle attribute at all
         assert TwitterOrchestrator._is_own_tweet("", account, browser) is False
         assert TwitterOrchestrator._is_own_tweet(None, account, browser) is False
+
+
+def test_keyword_retweets_are_deduplicated_across_cycles(fake_collaborators):
+    orch = _wired_orchestrator({"delay_between_accounts_seconds": 0})
+    tweet = ScrapedTweet(
+        tweet_id="123", user_handle="other", text_content="x topic",
+        tweet_url="https://x.com/other/status/123",
+    )
+    fake_collaborators["TweetScraper"].return_value.scrape_tweets_by_keyword.return_value = [tweet]
+    fake_collaborators["TweetPublisher"].return_value.retweet_tweet = AsyncMock(return_value=True)
+    fake_collaborators["TweetAnalyzer"].return_value.score_relevance = AsyncMock(return_value=1.0)
+
+    action_config = ActionConfig(
+        **dict(ALL_PIPELINES_OFF, enable_keyword_retweets=True),
+        max_retweets_per_keyword_run=1,
+        enable_relevance_filter_likes=False,
+        min_delay_between_actions_seconds=0,
+        max_delay_between_actions_seconds=0,
+    )
+    account = {
+        "account_id": "acct",
+        "is_active": True,
+        "target_keywords": ["topic"],
+        "action_config": action_config.model_dump(),
+    }
+
+    asyncio.run(orch._process_account(account))
+    asyncio.run(orch._process_account(account))
+
+    key = "retweet_acct_123"
+    assert fake_collaborators["TweetPublisher"].return_value.retweet_tweet.await_count == 1
+    assert key in orch.processed_action_keys
+    orch.file_handler.save_processed_action_key.assert_called_once()

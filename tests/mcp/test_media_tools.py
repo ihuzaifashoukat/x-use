@@ -47,7 +47,7 @@ class FakeTweet:
     media = [FakeMediaItem("image", "https://pbs.twimg.com/media/a.jpg", "a chart"),
              FakeMediaItem("video", "https://pbs.twimg.com/media/v.jpg")]
 
-    def model_dump(self, mode="json"):
+    def model_dump(self, mode="json", exclude=None):
         # Mimic ScrapedTweet (pydantic) so dump_tweet can serialize the fake.
         return {
             "tweet_id": self.tweet_id,

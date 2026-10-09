@@ -3,20 +3,20 @@
     "account_id": "your_account_id_growth",
     "is_active": true,
     "cookie_file_path": "config/your_account_id_growth_cookies.json",
-    "proxy": "pool:residential_eu",
+    "proxy": null,
     "post_to_community": false,
     "community_id": null,
     "community_name": null,
-    "target_keywords_override": [
+    "target_keywords": [
       "AI startups",
       "LLM apps",
       "AI engineering"
     ],
-    "competitor_profiles_override": [
+    "competitor_profiles": [
       "https://x.com/OpenAI",
       "https://x.com/DeepMind"
     ],
-    "action_config_override": {
+    "action_config": {
       "min_delay_between_actions_seconds": 90,
       "max_delay_between_actions_seconds": 240,
       "enable_competitor_reposts": true,
@@ -38,8 +38,6 @@
       "decision_retweet_min": 0.6,
       "decision_repost_min": 0.45,
       "llm_settings_for_post": {
-        "service_preference": "openai",
-        "model_name_override": "gpt-4o",
         "max_tokens": 1200,
         "temperature": 0.68
       }

@@ -61,7 +61,7 @@ def header_only_png(width: int, height: int) -> bytes:
 
 def test_huge_content_length_rejected_without_reading_body(monkeypatch):
     resp = StreamResponse([b"x" * 20_000_000], headers={"Content-Length": "20000000"})
-    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream: resp)
+    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream, **kwargs: resp)
     assert m.fetch_image("https://pbs.twimg.com/media/huge.jpg") is None
     assert resp.body_reads == 0  # body never streamed
     assert resp.closed
@@ -80,7 +80,7 @@ def test_stream_aborts_past_the_cap_without_content_length(monkeypatch):
             yield chunk
 
     resp.iter_content = counting_iter
-    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream: resp)
+    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream, **kwargs: resp)
     assert m.fetch_image("https://pbs.twimg.com/media/huge.jpg") is None
     assert sum(consumed) <= m.MAX_DOWNLOAD_BYTES + 1_000_000  # aborted early
     assert not getattr(resp, "fully_consumed", False)
@@ -90,7 +90,7 @@ def test_stream_aborts_past_the_cap_without_content_length(monkeypatch):
 def test_get_is_called_with_streaming_enabled(monkeypatch):
     calls = {}
 
-    def fake_get(url, timeout, stream):
+    def fake_get(url, timeout, stream, **kwargs):
         calls["stream"] = stream
         return StreamResponse([make_png_bytes()])
 
@@ -103,14 +103,14 @@ def test_small_streamed_image_still_works(monkeypatch):
     png = make_png_bytes(3000, 2000)
     chunks = [png[i:i + 65536] for i in range(0, len(png), 65536)]
     resp = StreamResponse(chunks, headers={"Content-Length": str(len(png))})
-    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream: resp)
+    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream, **kwargs: resp)
     block = m.fetch_image("https://pbs.twimg.com/media/a.jpg")
     assert block is not None and block.mimeType == "image/jpeg"
 
 
 def test_unparseable_content_length_falls_through_to_streaming_cap(monkeypatch):
     resp = StreamResponse([b"z" * 9_000_000], headers={"Content-Length": "garbage"})
-    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream: resp)
+    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream, **kwargs: resp)
     assert m.fetch_image("https://pbs.twimg.com/media/huge.jpg") is None
 
 
@@ -122,7 +122,7 @@ def test_oversized_dimensions_rejected_from_headers_without_decode(monkeypatch):
     Only the header is present, so any decode attempt would fail — a None
     here proves the gate fired on dimensions alone."""
     resp = StreamResponse([header_only_png(8000, 8000)])
-    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream: resp)
+    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream, **kwargs: resp)
     assert m.fetch_image("https://pbs.twimg.com/media/bomb.jpg") is None
 
 
@@ -137,7 +137,7 @@ def test_pixel_gate_precedes_decode(monkeypatch):
 
     monkeypatch.setattr(Image, "open", lambda *a, **k: HeaderOnlyImage())
     resp = StreamResponse([b"anything"])
-    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream: resp)
+    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream, **kwargs: resp)
     assert m.fetch_image("https://pbs.twimg.com/media/bomb.jpg") is None
 
 
@@ -145,11 +145,11 @@ def test_pillow_decompression_bomb_error_is_caught(monkeypatch):
     """30000x30000 = 900M pixels: Pillow itself raises DecompressionBombError
     at open — that must degrade to None, not escape."""
     resp = StreamResponse([header_only_png(30000, 30000)])
-    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream: resp)
+    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream, **kwargs: resp)
     assert m.fetch_image("https://pbs.twimg.com/media/bomb.jpg") is None
 
 
 def test_normal_dimensions_under_the_cap_pass(monkeypatch):
     resp = StreamResponse([make_png_bytes(3000, 2000)])  # 6M pixels
-    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream: resp)
+    monkeypatch.setattr(m.requests, "get", lambda url, timeout, stream, **kwargs: resp)
     assert m.fetch_image("https://pbs.twimg.com/media/a.jpg") is not None

@@ -53,6 +53,9 @@ class Ctx:
     queue_store: Optional[QueueStore] = None
     queue_config: Optional[QueueConfig] = None
     queue_runner: Optional[QueueRunner] = None
+    safety_store: Any = None
+    outreach_store: Any = None
+    thread_store: Any = None
 
 
 # ---------------------------------------------------------------------------

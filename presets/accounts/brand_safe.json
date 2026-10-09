@@ -7,16 +7,16 @@
     "post_to_community": false,
     "community_id": null,
     "community_name": null,
-    "target_keywords_override": [
+    "target_keywords": [
       "AI ethics",
       "responsible AI",
       "trustworthy AI"
     ],
-    "competitor_profiles_override": [
+    "competitor_profiles": [
       "https://x.com/PartnershipAI",
       "https://x.com/stanfordai"
     ],
-    "action_config_override": {
+    "action_config": {
       "min_delay_between_actions_seconds": 120,
       "max_delay_between_actions_seconds": 300,
       "enable_competitor_reposts": true,

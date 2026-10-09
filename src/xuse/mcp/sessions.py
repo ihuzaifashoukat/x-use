@@ -67,6 +67,7 @@ class SessionPool:
         self.reap_interval_seconds = float(reap_interval_seconds)
         self._browser_factory = browser_factory
         self._entries: Dict[str, SessionEntry] = {}
+        self._closing: Dict[str, asyncio.Event] = {}
         self._create_lock: Optional[asyncio.Lock] = None
         self._reaper_task: Optional[asyncio.Task] = None
         # Strong references to fire-and-forget cleanup tasks (orphaned-browser
@@ -95,6 +96,10 @@ class SessionPool:
         if self._closed:
             raise SessionError("Session pool is closed.")
         self._ensure_reaper()
+        while account_id in self._closing:
+            await self._closing[account_id].wait()
+            if self._closed:
+                raise SessionError("Session pool is closed.")
         entry = self._entries.get(account_id)
         if entry is not None:
             entry.touch()
@@ -102,11 +107,16 @@ class SessionPool:
         if self._create_lock is None:
             self._create_lock = asyncio.Lock()
         async with self._create_lock:  # serialize cold starts per pool
+            if self._closed:
+                raise SessionError("Session pool is closed.")
             entry = self._entries.get(account_id)
             if entry is not None:
                 entry.touch()
                 return entry
             entry = await self._cold_start(account_id)
+            if self._closed:
+                await asyncio.to_thread(self._close_driver_quietly, entry.browser_manager)
+                raise SessionError("Session pool is closed.")
             self._entries[account_id] = entry
             return entry
 
@@ -117,43 +127,52 @@ class SessionPool:
         Serializes tool calls that share one browser; refreshes the idle
         timestamp on release so active sessions are never reaped.
         """
-        entry = await self.acquire(account_id)
-        async with entry.lock:
-            try:
-                yield entry.browser_manager
-            finally:
-                entry.touch()
+        while True:
+            entry = await self.acquire(account_id)
+            await entry.lock.acquire()
+            # A close may start after acquire returned but before this waiter
+            # obtains the action lock. Never hand out that dying browser.
+            if self._entries.get(account_id) is entry and account_id not in self._closing:
+                break
+            entry.lock.release()
+        try:
+            yield entry.browser_manager
+        finally:
+            entry.touch()
+            entry.lock.release()
 
     async def close(self, account_id: str, *, wait: bool = True) -> None:
-        # Pop first so no new caller can attach to the dying entry, then wait
-        # out any in-flight action: closing the driver underneath an active
-        # tool call would kill the browser mid-write (account tools close
-        # warm sessions on update/pause/remove, possibly during a drain).
-        entry = self._entries.pop(account_id, None)
+        closing = self._closing.get(account_id)
+        if closing is not None:
+            await closing.wait()
+            return
+        entry = self._entries.get(account_id)
         if entry is None:
             return
-        if wait:
-            # Shutdown (close_all) passes wait=False: the server loop is
-            # already torn down by then, and a lock abandoned mid-hold on a
-            # dead loop would otherwise hang the cleanup forever.
-            try:
-                await entry.lock.acquire()
-            except asyncio.CancelledError:
-                # Cancelled (client disconnect) while an in-flight action held
-                # the lock: the entry was already popped, so without putting it
-                # back nothing — not the reaper, not close_all — would ever
-                # close this browser. Re-register it; the reaper skips locked
-                # entries and closes it once idle, and a later close() works.
-                self._entries[account_id] = entry
-                raise
+        closing = self._closing[account_id] = asyncio.Event()
+        locked = False
         try:
-            await asyncio.to_thread(entry.browser_manager.close_driver)
+            if wait:
+                await entry.lock.acquire()
+                locked = True
+            cleanup = asyncio.create_task(asyncio.to_thread(entry.browser_manager.close_driver))
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                # Cancelling a waiter cannot stop a driver-close thread. Keep
+                # acquisition blocked until that thread has actually finished.
+                await cleanup
+                raise
+            finally:
+                self._entries.pop(account_id, None)
             logger.info("Closed browser session for account '%s'.", account_id)
         except Exception:
             logger.exception("Error closing browser session for '%s'.", account_id)
         finally:
-            if wait and entry.lock.locked():
+            if locked:
                 entry.lock.release()
+            self._closing.pop(account_id, None)
+            closing.set()
 
     async def close_all(self) -> None:
         """Close every session and stop the reaper. Safe to call once at shutdown."""

@@ -1,0 +1,50 @@
+{
+  "llm": {
+    "api_key": "",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
+  },
+  "logging": {
+    "level": "INFO"
+  },
+  "browser_settings": {
+    "proxy": null,
+    "proxy_pools": {},
+    "proxy_pool_strategy": "hash"
+  },
+  "mcp": {
+    "browser_backend": "patchright",
+    "browser_headless": true,
+    "browser_channel": null,
+    "draft_mode": true,
+    "max_browser_sessions": 4,
+    "session_idle_timeout_seconds": 600,
+    "cold_start_timeout_seconds": 180,
+    "tool_timeout_seconds": 180,
+    "messaging_timeout_seconds": 60,
+    "drafts_file": "data/drafts.jsonl",
+    "safety_file": "data/action_safety.sqlite3",
+    "outreach_file": "data/outreach.sqlite3",
+    "safety": {
+      "read_interval_seconds": 2,
+      "write_interval_seconds": 90,
+      "max_actions_per_minute": 6,
+      "daily_caps": {
+        "read": 300,
+        "post": 5,
+        "reply": 15,
+        "like": 30,
+        "retweet": 10,
+        "message": 10,
+        "follow": 10,
+        "unlock": 5
+      }
+    }
+  },
+  "queue": {
+    "store_file": "data/engagement_queue.jsonl",
+    "auto_drain": {
+      "enabled": false
+    }
+  }
+}
