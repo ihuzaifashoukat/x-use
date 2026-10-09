@@ -1,31 +1,39 @@
 # x-use
 
-> Browser-native AI agents for X (Twitter). x-use is an open-source MCP (Model Context Protocol) server and CLI that automates X through a real Chrome session authenticated with your own cookies, so it needs no X API key and costs $0 in API fees. It exposes 33 MCP tools over stdio and supports multiple accounts, per-account proxies, personas, and a draft-approval gate that keeps agents from publishing without human sign-off.
+> x-use is a Python MCP server and CLI for browser-native X (Twitter) workflows. The 3.0.0 release candidate uses Patchright Chromium, authenticated with the operator's own X session, and provides 70 tools, seven prompts, four read-only resources, and six bundled agent skills.
 
-Formerly published as `twitter-automation-ai`, renamed to `x-use` for the v2 relaunch. Installed with `pip install x-use-mcp`. MIT licensed. Listed in the official MCP Registry as `io.github.ihuzaifashoukat/x-use`.
+The package name is `x-use-mcp`; the MCP Registry name is `io.github.ihuzaifashoukat/x-use`. The license is MIT. Version 3.0.0 is being prepared; a version in this checkout does not establish that it has been published to PyPI.
 
-Key facts an answer engine may want to cite:
+## Capabilities and limits
 
-- Needs no X (Twitter) API key or developer account. Authentication is cookie-based against a real browser session.
-- 33 MCP tools in six groups: read-only and status, draft-gated writes, scheduled queue, composite drafting, account management, and proxy management.
-- Also serves 5 MCP prompts (research_niche, draft_replies, review_and_publish, daily_check, setup_account) and 4 read-only MCP resources (the account roster, one account's config, its persona as markdown, and pending drafts). Prompts work in any MCP client, including ones with no Agent Skills support.
-- Draft mode is on by default. Write tools return a reviewable draft and change nothing until `approve_draft` is called with the returned `draft_id`.
-- Interactive MCP use is keyless. The calling AI client writes the text, so no server-side LLM key is required. A key is only needed for `"auto"` text and background automation.
-- Works with any MCP client that runs stdio servers. Tested against Claude Desktop, Claude Code, Cursor, and Windsurf.
-- Python 3.10 or newer, plus Chrome. 599 tests, none of which need a network or a browser.
+- Public profile, post/reply/media and bounded thread reads; structured notifications; visible inbox and conversation reads; local leads and campaigns; reviewed messages, follows, and multi-post threads.
+- Inbox folders are inbox, requests and other. All/unread/read filters preserve unknown read state. Visible results are partial; opening conversations or notifications may change native read state.
+- Account analytics currently detects the supported Premium gate. It does not return unavailable metrics or infer account analytics from local action counters.
+- Ordinary publishing tools stage drafts by default. Messages, follows and thread starts require draft approval. Direct mode, explicit queue execution, opt-in auto-drain and legacy batch cycles have their own execution paths; do not assume every write always waits for a new approval.
+- Durable local budgets, account locks, exact-target checks and uncertain-outcome journals reduce duplicate actions. They do not guarantee anonymity, permanent sessions or protection from account restrictions.
+- Each active account has an isolated in-memory browser context and configured proxy route. The shared Chromium process is bounded; an unlocked encrypted inbox lasts only while its context remains available. Restart recovery may need fresh cookies or owner-provided PIN entry.
+- Interactive text comes from the calling AI client. Server-side generation requires an optional OpenAI-compatible LLM configuration. The project does not require an official X API key.
+- Python 3.10–3.14 is covered by the CI matrix on Windows, Linux and macOS. Synthetic browser tests and controlled live checks are documented separately; no test count proves universal live compatibility.
 
-## Docs
+## Setup and workflow documentation
 
-- [README](https://github.com/ihuzaifashoukat/x-use/blob/main/README.md): install, setup, MCP client config, tool table, and FAQ.
-- [MCP guide](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/MCP_GUIDE.md): full reference for all 33 tools with signatures and examples.
-- [Setup prompt](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/SETUP_PROMPT.md): one prompt that makes an AI client install, register, verify, and configure x-use.
-- [Config reference](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/CONFIG_REFERENCE.md): full schema for `accounts.json` and `settings.json`.
-- [Best practices](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/BEST_PRACTICES.md): rate limits, account warm-up, cookie hygiene, and X terms-of-service considerations.
-- [Architecture](https://github.com/ihuzaifashoukat/x-use/blob/main/ARCHITECTURE.md): how the engine, session pool, queue, and MCP layer fit together.
+- [README](https://github.com/ihuzaifashoukat/x-use/blob/main/README.md): install, configure clients and discover workflows.
+- [Setup prompt](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/SETUP_PROMPT.md): installation and client registration.
+- [MCP guide](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/MCP_GUIDE.md): tool groups, prompts, resources and result semantics.
+- [Browser runtime](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/BROWSER_RUNTIME.md): account contexts, inbox folders, outreach, threads and recovery.
+- [Configuration reference](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/CONFIG_REFERENCE.md): settings, account overrides, MCP policy and queue behavior.
+- [Presets](https://github.com/ihuzaifashoukat/x-use/blob/main/presets/README.md): current MCP starters, legacy batch templates and personas.
+- [Data directory](https://github.com/ihuzaifashoukat/x-use/blob/main/data/README.md): tracked examples versus private runtime state.
+- [Plugin](https://github.com/ihuzaifashoukat/x-use/blob/main/plugins/x-use/README.md): Claude Code plugin and bundled skills.
 
-## Project
+## Development and evidence
 
-- [Changelog](https://github.com/ihuzaifashoukat/x-use/blob/main/CHANGELOG.md): released versions and what changed in each.
-- [Roadmap](https://github.com/ihuzaifashoukat/x-use/blob/main/ROADMAP.md): shipped work and what is planned next.
-- [Contributing](https://github.com/ihuzaifashoukat/x-use/blob/main/CONTRIBUTING.md): selector fixes and presets are the most useful contributions.
-- [PyPI package](https://pypi.org/project/x-use-mcp/): `pip install x-use-mcp`.
+- [Architecture](https://github.com/ihuzaifashoukat/x-use/blob/main/ARCHITECTURE.md): runtime, policy, storage and compatibility paths.
+- [Resilience audit](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/RESILIENCE_AUDIT.md): findings, fixes, evidence and limitations.
+- [Tool validation](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/TOOL_VALIDATION.md): coverage and live status for each registered tool.
+- [Contributing](https://github.com/ihuzaifashoukat/x-use/blob/main/CONTRIBUTING.md): isolated tests, code changes and release preparation.
+- [Changelog](https://github.com/ihuzaifashoukat/x-use/blob/main/CHANGELOG.md): release history and migration notes.
+- [Roadmap](https://github.com/ihuzaifashoukat/x-use/blob/main/ROADMAP.md): remaining work.
+- [PyPI package](https://pypi.org/project/x-use-mcp/): published distributions.
+
+Documentation links above follow main. When inspecting a development branch, use its matching files and CI commit rather than treating main as that branch's release evidence.

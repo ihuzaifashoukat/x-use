@@ -12,7 +12,7 @@ The detailed [runtime audit](docs/RESILIENCE_AUDIT.md) records the controls, tes
 
 > **Educational-use disclaimer:** intended for personal, educational, noncommercial experiments on accounts you own or are authorized to manage. Do not use it for unsolicited bulk outreach or to bypass platform protections. X's rules still apply, and this project makes no promise of undetectable activity or protection from account restrictions.
 
-> x-use is the v2 relaunch of **twitter-automation-ai**. The repository was renamed; old URLs keep redirecting, and stars, forks, and issues came along intact.
+> This branch prepares **3.0.0**. The package is not released until maintainer review, passing CI and publication. See the [migration notes](CHANGELOG.md#migration-from-2x) before upgrading an existing setup.
 
 [![MCP Badge](https://lobehub.com/badge/mcp/ihuzaifashoukat-x-use)](https://lobehub.com/mcp/ihuzaifashoukat-x-use)
 [![Glama score](https://glama.ai/mcp/servers/ihuzaifashoukat/x-use/badges/score.svg)](https://glama.ai/mcp/servers/ihuzaifashoukat/x-use)
@@ -102,7 +102,7 @@ Then connect your AI client. Paste this into `claude_desktop_config.json` (Claud
 
 If `x-use` is not on your client's PATH, use the full path the installer printed (for example `.venv/bin/x-use` or `.venv\Scripts\x-use.exe`). Restart the client, then ask it to `list_accounts`.
 
-**Draft mode is on by default.** Write tools return a reviewable draft and change nothing until you call `approve_draft` with the returned `draft_id`. Opt out with `"mcp": { "draft_mode": false }` in `config/settings.json`.
+**Draft mode is on by default.** Ordinary publishing tools return a reviewable draft for `approve_draft`; operators can explicitly disable that mode with `"mcp": { "draft_mode": false }`. Messages, follows and thread starts still require draft approval. Queue processing, opt-in auto-drain and the legacy batch runner are separate execution paths, so draft mode is not a global prohibition on writes.
 
 ## MCP tools
 
@@ -224,7 +224,7 @@ An LLM key is optional: interactive MCP use needs none (your agent writes the te
 - `config/settings.json`: global defaults for browser, pacing, action caps, LLM, proxies, and the `mcp` section.
 - `.env`: LLM API keys; overrides `settings.json` (env wins). See [`.env.example`](.env.example).
 
-Full schema: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md). Starter templates: [`presets/`](presets/) (offered as wizard choices by `x-use init`).
+Full schema: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md). [Presets](presets/README.md) are reusable configuration templates: `beginner-patchright` and `reviewed_outreach` are the current MCP starters; the Selenium alternatives are explicitly labeled. [Data](data/README.md) holds private runtime state plus tracked dummy format examples. Changing a preset does not change an existing account, and sample cookies cannot authenticate one.
 
 ## Optional proxy provider
 

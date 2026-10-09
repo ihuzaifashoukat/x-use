@@ -59,8 +59,16 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at ihuzaifashoukat@gmail.com
+reported privately to the project maintainer at
+[ihuzaifashoukat@gmail.com](mailto:ihuzaifashoukat@gmail.com).
 All complaints will be reviewed and investigated promptly and fairly.
+
+Include links or redacted evidence that helps explain the incident. Do not post
+private conversations, account cookies, access tokens, or personal information in
+public issues. This reporting channel covers project repositories, discussions,
+reviews, and official community spaces. Technical bug reports belong in GitHub
+Issues; security-sensitive reports should use the private reporting channel in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.
