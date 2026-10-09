@@ -61,6 +61,37 @@ async def search_session(ctx, account, legacy_factory):
             yield search
 
 
+async def _drain_task(task):
+    """Settle owned work without forwarding repeated caller cancellation.
+
+    asyncio.wait does not cancel its children and, unlike shield, does not
+    raise when the child itself finishes cancelled. Retain caller cancellation
+    separately so timeout cleanup can still deliver it after bookkeeping.
+    """
+    cancellation = None
+    while not task.done():
+        try:
+            await asyncio.wait({task})
+        except asyncio.CancelledError as exc:
+            cancellation = cancellation or exc
+    return cancellation
+
+
+async def _settled_thread_call(function, *args, action_id=None, **kwargs):
+    task = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
+    cancellation = await _drain_task(task)
+    try:
+        result = task.result()
+    except BaseException:
+        if cancellation is None:
+            raise
+    if cancellation is not None:
+        if action_id:
+            cancellation.action_id = action_id
+        raise cancellation
+    return result
+
+
 async def browser_call(ctx, account, operation, *args, kind="read", action_context=None, recipient_validator=None, recovery_read=False, **kwargs):
     account = resolve_account(ctx, account)[0]
     timeout = ctx.config_loader.get_setting("mcp.tool_timeout_seconds", 180)
@@ -81,17 +112,44 @@ async def browser_call(ctx, account, operation, *args, kind="read", action_conte
                 failure = exc
                 raise
 
-        try:
-            return await asyncio.wait_for(operation_task(), timeout)
-        except asyncio.CancelledError as exc:
+        task = asyncio.create_task(operation_task())
+
+        def recovery_id():
             action_id = getattr(failure, "action_id", None)
+            if task.done() and not task.cancelled():
+                # Cancellation can race a completed non-cancellation failure.
+                # Retrieve that exception even when its captured ID is known,
+                # so the drained child never reports an unhandled exception.
+                exception = task.exception()
+                if exception is not None:
+                    action_id = action_id or getattr(exception, "action_id", None)
+                else:
+                    result = task.result()
+                    if isinstance(result, dict):
+                        action_id = action_id or result.get("action_id")
+            return action_id
+
+        try:
+            done, _ = await asyncio.wait({task}, timeout=timeout)
+            if not done:
+                task.cancel()
+                cancellation = await _drain_task(task)
+                if cancellation is not None:
+                    raise cancellation
+                raise asyncio.TimeoutError()
+            return task.result()
+        except asyncio.CancelledError as exc:
+            if not task.done():
+                task.cancel()
+            await _drain_task(task)
+            action_id = recovery_id()
             if action_id:
                 exc.action_id = action_id
             raise
-        except asyncio.TimeoutError as exc:
+        except asyncio.TimeoutError:
             error = ToolError("Browser operation timed out. Inspect get_account_safety before retrying a write.")
             error.reason = "tool_timeout"
-            error.action_id = getattr(failure, "action_id", None) or getattr(exc.__cause__, "action_id", None)
+            error.action_id = recovery_id()
             raise error from None
     if ctx.safety_store is None:
         return await run()
@@ -124,7 +182,8 @@ async def _browser_call_locked(ctx, account, operation, *args, kind="read", acti
                 # Recover the committed ID before recording uncertainty so a
                 # timed-out draft never loses its recovery reference.
                 try:
-                    action_id = await reservation
+                    await _drain_task(reservation)
+                    action_id = reservation.result()
                 except Exception:
                     pass
                 raise
@@ -159,20 +218,29 @@ async def _browser_call_locked(ctx, account, operation, *args, kind="read", acti
         if policy is not None:
             if action_id:
                 try:
-                    await asyncio.to_thread(policy.finish, account, action_id, "failed" if kind in ("read", "unlock") else "uncertain")
+                    await _settled_thread_call(policy.finish, account, action_id,
+                        "failed" if kind in ("read", "unlock") else "uncertain", action_id=action_id)
+                except asyncio.CancelledError:
+                    # The ledger call settled before delivering cancellation.
+                    # Still apply a detected challenge pause and retain the
+                    # original failure's action ID for the outer caller.
+                    pass
                 except Exception:
                     # A committed reservation still blocks duplicates. Preserve
                     # the original cancellation/error and its recovery ID.
                     logger.exception("Action outcome bookkeeping failed; reservation remains unresolved.")
             if getattr(exc, "reason", None) in ("login_required", "challenge", "rate_limited", "account_locked", "pin_required", "session_expired"):
                 try:
-                    await asyncio.to_thread(policy.pause, account, exc.reason, preserve_manual=True)
+                    await _settled_thread_call(policy.pause, account, exc.reason,
+                        preserve_manual=True, action_id=action_id)
+                except asyncio.CancelledError:
+                    pass  # Pause has settled; preserve the original failure.
                 except Exception:
                     logger.exception("Account pause bookkeeping failed.")
         raise
     if policy is not None and action_id:
         try:
-            await asyncio.to_thread(policy.finish, account, action_id, "succeeded")
+            await _settled_thread_call(policy.finish, account, action_id, "succeeded", action_id=action_id)
         except Exception:
             error = ToolError("Browser action completed but its ledger outcome could not be recorded. Inspect and reconcile the action ID before any retry.")
             error.reason = "ledger_update_failed"
@@ -181,7 +249,7 @@ async def _browser_call_locked(ctx, account, operation, *args, kind="read", acti
         if recovery_read or kind == "unlock":
             if not isinstance(result, dict) or result.get("success") is not True:
                 raise ToolError("Recovery probe did not confirm authenticated readiness.")
-            resumed = await asyncio.to_thread(policy.resume_if_unchanged, account, pause_token)
+            resumed = await _settled_thread_call(policy.resume_if_unchanged, account, pause_token, action_id=action_id)
             if not resumed:
                 from .safety import PolicyError
                 raise PolicyError("The browser recovered, but a newer account pause was retained. Inspect get_account_safety before resuming.", reason="pause_changed", action_id=action_id)

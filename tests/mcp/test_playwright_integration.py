@@ -385,7 +385,161 @@ async def test_client_cancellation_preserves_uncertain_send_for_reconciliation(a
 
 
 @pytest.mark.asyncio
-async def test_client_cancellation_before_denied_reservation_keeps_draft_pending(async_server, monkeypatch):
+@pytest.mark.parametrize("boundary", ["reserve", "uncertain_finish", "succeeded_finish"])
+@pytest.mark.parametrize("trigger", ["client", "timeout"])
+async def test_repeated_cancellation_settles_ledger_before_releasing_account(
+    async_server, monkeypatch, boundary, trigger
+):
+    from xuse.mcp.safety import PolicyError
+
+    ctx = async_server.xuse_ctx
+    ctx.config_loader.settings.setdefault("mcp", {})["tool_timeout_seconds"] = 1 if trigger == "timeout" else 10
+    entered, release = threading.Event(), threading.Event()
+    sending = asyncio.Event()
+    method = "reserve" if boundary == "reserve" else "finish"
+    original = getattr(ctx.safety_store, method)
+
+    def held_ledger_call(*args, **kwargs):
+        entered.set()
+        if not release.wait(5):
+            raise AssertionError("ledger fixture did not release")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(ctx.safety_store, method, held_ledger_call)
+    if boundary == "uncertain_finish":
+        async def hanging_send(recipient, text):
+            sending.set()
+            await asyncio.Event().wait()
+        ctx.session_pool.browser.send_message = hanging_send
+
+    draft = await call_tool(async_server, "send_message", {
+        "account": "acc1", "recipient": "@alex", "text": "reviewed"})
+    cancellation_ids = []
+
+    async def approve():
+        try:
+            return await call_tool(async_server, "approve_draft", {"draft_id": draft["draft_id"]})
+        except asyncio.CancelledError as exc:
+            # Python 3.10 may replace the error when awaiting a cancelled
+            # Task. Check the ID at the tool boundary, where draft approval
+            # consumes it, instead of depending on Task exception identity.
+            cancellation_ids.append(getattr(exc, "action_id", None))
+            raise
+
+    task = asyncio.create_task(approve())
+    try:
+        if boundary == "uncertain_finish" and trigger == "client":
+            await asyncio.wait_for(sending.wait(), 2)
+            task.cancel()
+        assert await asyncio.to_thread(entered.wait, 2)
+        if trigger == "timeout":
+            # Allow the tool deadline to cancel the operation while this
+            # ledger thread is still blocked; then cancel its caller too.
+            await asyncio.sleep(1.1)
+        else:
+            task.cancel()
+        for _ in range(2):
+            await asyncio.sleep(0)
+            task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done(), "Cancellation returned before ledger cleanup"
+        with pytest.raises(PolicyError) as busy:
+            with ctx.safety_store.operation_lock("acc1"):
+                pytest.fail("Account lock released while ledger work is in flight")
+        assert busy.value.reason == "account_busy"
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 2)
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    record = ctx.safety_store.status("acc1")["recent_actions"][0]
+    assert cancellation_ids == [record["action_id"]]
+    confirmed = boundary == "succeeded_finish"
+    assert record["status"] == ("succeeded" if confirmed else "uncertain")
+    assert ctx.draft_store.get(draft["draft_id"]).status == ("executed" if confirmed else "uncertain")
+    assert ctx.safety_store.reference("acc1", record["action_id"])["draft_id"] == draft["draft_id"]
+    assert ctx.session_pool.started == (0 if boundary == "reserve" else 1)
+    assert len(ctx.session_pool.browser.calls) == (1 if confirmed else 0)
+    with ctx.safety_store.operation_lock("acc1"):
+        pass  # Cleanup completed before ownership returned to another caller.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("boundary", ["challenge_pause", "recovery_resume"])
+async def test_repeated_cancellation_settles_pause_bookkeeping(async_server, monkeypatch, boundary):
+    from xuse.mcp.safety import PolicyError
+
+    ctx = async_server.xuse_ctx
+    entered, release = threading.Event(), threading.Event()
+    method = "pause" if boundary == "challenge_pause" else "resume_if_unchanged"
+    if boundary == "recovery_resume":
+        ctx.safety_store.pause("acc1", "challenge")
+    else:
+        async def blocked_send(recipient, text):
+            raise BrowserBlocked("challenge")
+        ctx.session_pool.browser.send_message = blocked_send
+    original = getattr(ctx.safety_store, method)
+
+    def held_pause_call(*args, **kwargs):
+        entered.set()
+        if not release.wait(5):
+            raise AssertionError("pause fixture did not release")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(ctx.safety_store, method, held_pause_call)
+    draft = None
+    if boundary == "challenge_pause":
+        draft = await call_tool(async_server, "send_message", {
+            "account": "acc1", "recipient": "@alex", "text": "reviewed"})
+        operation, arguments = "approve_draft", {"draft_id": draft["draft_id"]}
+    else:
+        operation, arguments = "resume_account_actions", {"account": "acc1"}
+    cancellation_ids = []
+
+    async def perform():
+        try:
+            return await call_tool(async_server, operation, arguments)
+        except asyncio.CancelledError as exc:
+            cancellation_ids.append(getattr(exc, "action_id", None))
+            raise
+
+    task = asyncio.create_task(perform())
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        for _ in range(3):
+            task.cancel()
+            await asyncio.sleep(0)
+        assert not task.done()
+        with pytest.raises(PolicyError, match="Another operation"):
+            with ctx.safety_store.operation_lock("acc1"):
+                pytest.fail("Pause bookkeeping lost its account lock")
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 2)
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    status = ctx.safety_store.status("acc1")
+    record = status["recent_actions"][0]
+    assert cancellation_ids == [record["action_id"]]
+    assert status["paused"] == (boundary == "challenge_pause")
+    assert record["status"] == ("uncertain" if draft else "succeeded")
+    if draft:
+        assert ctx.draft_store.get(draft["draft_id"]).status == "uncertain"
+    with ctx.safety_store.operation_lock("acc1"):
+        pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_count", [1, 3])
+async def test_client_cancellation_before_denied_reservation_keeps_draft_pending(async_server, monkeypatch, cancel_count):
     ctx = async_server.xuse_ctx
     entered, release = threading.Event(), threading.Event()
     cancelling = asyncio.Event()
@@ -414,6 +568,10 @@ async def test_client_cancellation_before_denied_reservation_keeps_draft_pending
         assert await asyncio.to_thread(entered.wait, 2)
         task.cancel()
         await asyncio.wait_for(cancelling.wait(), 2)
+        for _ in range(cancel_count - 1):
+            task.cancel()
+            await asyncio.sleep(0)
+        assert not task.done()
         release.set()
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(task, 2)
@@ -423,6 +581,37 @@ async def test_client_cancellation_before_denied_reservation_keeps_draft_pending
     assert ctx.safety_store.status("acc1")["recent_actions"] == []
     assert ctx.session_pool.started == 0
     assert (await call_tool(async_server, "reject_draft", {"draft_id": draft["draft_id"]}))["ok"]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_racing_completed_failure_consumes_child_exception(async_server, monkeypatch):
+    from xuse.mcp import browser_bridge
+    from xuse.mcp.safety import PolicyError
+
+    children, cancellation_ids = [], []
+
+    async def fail_at_completion(*args, **kwargs):
+        children.append(asyncio.current_task())
+        asyncio.get_running_loop().call_soon(caller.cancel)
+        raise PolicyError("synthetic completed failure", reason="challenge", action_id="synthetic-action")
+
+    monkeypatch.setattr(browser_bridge, "_browser_call_locked", fail_at_completion)
+
+    async def perform():
+        try:
+            await browser_bridge.browser_call(async_server.xuse_ctx, "acc1", "send_message", kind="message")
+        except asyncio.CancelledError as exc:
+            cancellation_ids.append(getattr(exc, "action_id", None))
+            raise
+
+    caller = asyncio.create_task(perform())
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(caller, 2)
+    assert cancellation_ids == ["synthetic-action"]
+    assert children[0].done() and not children[0].cancelled()
+    # asyncio uses this marker to emit "Task exception was never retrieved"
+    # at destruction. Do not retrieve the exception in the test itself.
+    assert not children[0]._log_traceback
 
 
 @pytest.mark.asyncio
