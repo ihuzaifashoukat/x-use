@@ -46,11 +46,18 @@ def isolate_mcp_state(tmp_path, monkeypatch):
     monkeypatch.setattr(ConfigLoader.__init__, "__defaults__",
                         (config / "settings.json", config / "accounts.json"))
     for name, module in tuple(sys.modules.items()):
-        if name.startswith("xuse.mcp.") and module is not None:
-            if hasattr(module, "PROJECT_ROOT"):
-                monkeypatch.setattr(module, "PROJECT_ROOT", home)
-            if hasattr(module, "CONFIG_DIR"):
-                monkeypatch.setattr(module, "CONFIG_DIR", config)
+        if (name.startswith(("xuse.mcp.", "xuse.core.browser_manager."))
+                or name in ("xuse.browser.cookies", "xuse.utils.proxy_manager")) and module is not None:
+            # Cookie loaders keep their own imported root aliases. A missing
+            # relative fixture cookie must never fall back to checkout files.
+            for attribute in ("PROJECT_ROOT", "CONFIG_PROJECT_ROOT"):
+                if hasattr(module, attribute):
+                    monkeypatch.setattr(module, attribute, home)
+            for attribute in ("CONFIG_DIR", "APP_CONFIG_DIR"):
+                if hasattr(module, attribute):
+                    monkeypatch.setattr(module, attribute, config)
+            if hasattr(module, "DEFAULT_WDM_CACHE_PATH"):
+                monkeypatch.setattr(module, "DEFAULT_WDM_CACHE_PATH", home / ".wdm_cache")
     return home
 
 
