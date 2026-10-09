@@ -1,6 +1,6 @@
 # x-use
 
-> x-use is a Python MCP server and CLI for browser-native X (Twitter) workflows. The 3.0.0 release candidate uses Patchright Chromium, authenticated with the operator's own X session, and provides 70 tools, seven prompts, four read-only resources, and six bundled agent skills.
+> x-use is a Python MCP server and CLI for browser-native X (Twitter) workflows. The 3.0.0 release candidate uses Patchright Chromium, authenticated with the operator's own X session, and provides 70 tools, seven prompts, four read-only resources, and seven bundled agent skills, including x-use-inbox for messages and notifications.
 
 The package name is `x-use-mcp`; the MCP Registry name is `io.github.ihuzaifashoukat/x-use`. The license is MIT. Version 3.0.0 is being prepared; a version in this checkout does not establish that it has been published to PyPI.
 

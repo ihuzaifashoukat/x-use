@@ -84,6 +84,7 @@ immediately when draft mode is disabled. `approve_draft` executes reviewed
 drafts; queued actions run via `process_queue` or opt-in auto-drain, and legacy
 `run_cycle` runs immediately. Preparation alone does not authorize those gates.
 
+Use **x-use-inbox** for requested message and notification workflows.
 Requested inbox verification uses `get_inbox(account=..., folder="inbox",
 inbox_filter="unread", limit=5)`; requests and other folders are separate, and
 results cover only visible conversations. Reads never accept requests.

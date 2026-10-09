@@ -58,7 +58,7 @@ def installed_package_check(expect_installed: bool, driver: str) -> dict:
     assert entries.get("x-use") == "xuse.cli:app", "CLI entry point is absent."
     skill_root = resources.files("xuse.skills_pack")
     skills = [path.name for path in skill_root.iterdir() if path.is_dir() and (path / "SKILL.md").is_file()]
-    assert {"x-use", "x-use-setup", "x-use-engage", "x-use-content", "x-use-review", "x-use-threads"}.issubset(skills), "Bundled skill files are absent from the wheel."
+    assert {"x-use", "x-use-setup", "x-use-engage", "x-use-content", "x-use-review", "x-use-threads", "x-use-inbox"}.issubset(skills), "Bundled skill files are absent from the wheel."
     for name in skills:
         assert (skill_root / name / "SKILL.md").read_text(encoding="utf-8").startswith("---")
     environment = dict(os.environ, PYTHONUTF8="1", PYTHONNOUSERSITE="1")

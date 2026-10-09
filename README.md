@@ -174,7 +174,7 @@ Tools are what the model calls. Prompts and resources are the other two halves o
 
 ## Agent skills
 
-`x-use init` (or `x-use skills install`) installs six agent skills for Claude Code and Codex: **x-use** (overview), **x-use-setup** (onboarding), **x-use-engage** (research and replies), **x-use-content** (content creation), **x-use-review** (daily digest), and **x-use-threads** (thread reading, review, and continuation). For Claude Code, use the [local plugin setup guide](plugins/x-use/README.md) to load the MCP server and skills from this checkout with an absolute data directory. Marketplace installation is available after the new plugin files are published.
+`x-use init` (or `x-use skills install`) installs seven agent skills for Claude Code and Codex: **x-use** (overview), **x-use-setup** (onboarding), **x-use-engage** (research and replies), **x-use-inbox** (messages, unread/request folders, and notifications), **x-use-content** (content creation), **x-use-review** (daily digest), and **x-use-threads** (thread reading, review, and continuation). For Claude Code, use the [local plugin setup guide](plugins/x-use/README.md) to load the MCP server and skills from this checkout with an absolute data directory. Marketplace installation is available after the new plugin files are published.
 
 **Zero-knowledge setup:** paste the prompt from [docs/SETUP_PROMPT.md](docs/SETUP_PROMPT.md) into your AI client, it installs, registers, verifies, and interviews you to configure your account.
 

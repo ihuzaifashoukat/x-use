@@ -64,9 +64,11 @@ everywhere below, for example `.venv/bin/x-use` or `.venv\Scripts\x-use.exe`.
 x-use skills install
 ```
 
-This writes six skills to `~/.claude/skills/` and `~/.agents/skills/`, so Claude
+This writes seven skills to `~/.claude/skills/` and `~/.agents/skills/`, so Claude
 Code and Codex-style agents both pick them up. They cover engagement, content,
-daily review, account setup, and X thread workflows. `--force` overwrites existing copies, and
+daily review, inbox/messages/notifications, account setup, and X thread workflows.
+Use **x-use-inbox** for reading incoming activity and sending contextual DMs.
+`--force` overwrites existing copies, and
 `x-use skills list` shows what landed.
 
 ## 4. Register the MCP server, then restart the client

@@ -36,7 +36,8 @@ evidence is preserved; requests and other folders must be inspected separately.
 bounded structured notification rows, with unknown IDs, type or unread state
 when evidence is absent. Visiting notifications may mark them read. Treat
 both surfaces as partial; empty supported windows do not establish full history.
-Use **x-use-engage** for conversation context and individually reviewed replies.
+Use **x-use-inbox** for conversation context, notifications, and authorized DMs;
+use **x-use-engage** for public-post replies and profile outreach research.
 
 ## Rules
 

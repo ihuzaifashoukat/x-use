@@ -1,6 +1,6 @@
 ---
 name: x-use-threads
-description: Read visible X conversation threads and prepare or resume multi-post drafts with x-use. Use when the user asks to read, compose, review, or continue a thread on X.
+description: Read visible X post/reply threads and prepare or resume multi-post drafts with x-use. Use when the user asks to read, compose, review, or continue a public thread on X; use x-use-inbox for direct-message conversations.
 ---
 
 # X threads

@@ -142,7 +142,8 @@ The server also exposes two non-tool surfaces, both read-only to obtain:
 ## Workflow skills
 
 - Setting up or adding an account → use **x-use-setup**
-- Researching, replying, inbox reads, and reviewed outreach → **x-use-engage**
+- Reading/sending DMs, inbox requests, and notifications → **x-use-inbox**
+- Researching, replying to posts, and reviewed profile outreach → **x-use-engage**
 - Creating and staging original content → **x-use-content**
 - Daily review: metrics, drafts, queue → **x-use-review**
 - Reading, drafting, or continuing an X thread → **x-use-threads**

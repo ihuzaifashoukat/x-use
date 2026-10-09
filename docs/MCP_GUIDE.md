@@ -336,19 +336,21 @@ dictate) via `update_account`.
 
 ## Skills
 
-Six agent skills ship inside the package and install into both Claude Code
+Seven agent skills ship inside the package and install into both Claude Code
 and Codex skill directories:
 
 - **x-use**, overview and routing: tool groups, the two safety gates,
   conventions.
 - **x-use-setup**, zero-knowledge onboarding interview.
 - **x-use-engage**, research + reply workflow (draft-first).
+- **x-use-inbox**, read and reply to messages, triage unread/request folders,
+  inspect structured notifications, and recover uncertain delivery.
 - **x-use-content**, content creation and staging.
 - **x-use-review**, daily digest: health, metrics, drafts, queue.
 - **x-use-threads**, bounded thread context, reviewed thread drafts, and durable continuation.
 
 ```bash
-x-use skills install   # copy the six skills into the client skill dirs
+x-use skills install   # copy the seven skills into the client skill dirs
 x-use skills list      # show what is installed where
 ```
 
