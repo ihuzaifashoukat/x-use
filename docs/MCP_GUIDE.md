@@ -2,17 +2,22 @@
 
 x-use is an MCP server that drives a real, logged-in browser on X (Twitter):
 post, reply, search, like, retweet, schedule, and manage multiple accounts,
-no X API key required. This is the full reference for its 33 tools:
-signatures, behavior, and gotchas.
+no X API key required. The MCP surface includes account, browser, profile,
+inbox, outreach, recovery, and resumable thread workflows. The browser,
+profile, inbox, lead, campaign, recovery, and thread tools are documented in
+[the browser runtime guide](BROWSER_RUNTIME.md). The original tool contracts
+below retain their schemas; browser work uses Patchright by default.
+`run_cycle` remains an explicit Selenium compatibility tool.
 
 ## The two safety gates
 
 1. **Draft gate (on by default).** Write tools (`post_tweet`,
-   `generate_and_post`, `reply_to_tweet`, `engage`, `run_cycle`,
-   `approve_draft`) build the full payload, store a draft, and change nothing
+   `generate_and_post`, `reply_to_tweet`, `engage`) build the full payload,
+   store a draft, and change nothing
    on X. Only `approve_draft(draft_id)` executes a draft. `run_cycle` is the
    legacy batch path, it executes immediately and is not draft-gated. Opt out
    with `"mcp": { "draft_mode": false }` in `config/settings.json`.
+  `send_message`, `prepare_outreach` and `follow_profile` always need individual draft approval.
 2. **Queue gate.** `queue_post` / `queue_engagement` only store work. Nothing
    runs until an explicit `process_queue` call (or the opt-in `auto_drain`
    worker), which applies jittered pacing and daily caps.
@@ -30,9 +35,16 @@ automation.
 ## Install & client setup
 
 ```bash
-pip install x-use-mcp    # Python 3.10+ and Chrome required
+pip install x-use-mcp    # Python 3.10+
+python -m patchright install chromium
 x-use doctor             # verify browser/driver, cookies, LLM key, proxies
 ```
+
+From a checkout, `py -3 scripts/setup_uv.py` on Windows or
+`python3 scripts/setup_uv.py` on macOS/Linux installs missing uv, the locked
+environment and matching Chromium. Use the resulting `.venv` executable.
+Set `X_USE_HOME` to an absolute data directory in the MCP server environment
+so the client working directory cannot change where configuration and state live.
 
 Register the server in your client, then restart the client:
 
@@ -42,24 +54,28 @@ Register the server in your client, then restart the client:
   {
     "mcpServers": {
       "x-use": {
-        "command": "x-use",
-        "args": ["mcp"]
+        "command": "/absolute/path/to/x-use/.venv/bin/x-use",
+        "args": ["mcp"],
+        "env": {"X_USE_HOME": "/absolute/path/to/x-use-data"}
       }
     }
   }
   ```
 
-- Claude Code: `claude mcp add x-use -- x-use mcp`
+- Claude Code: `claude mcp add --scope user x-use --env X_USE_HOME=/absolute/path/to/x-use-data -- /absolute/path/to/x-use/.venv/bin/x-use mcp`
 - Codex (`~/.codex/config.toml`):
 
   ```toml
   [mcp_servers.x-use]
-  command = "x-use"
+  command = "/absolute/path/to/x-use/.venv/bin/x-use"
   args = ["mcp"]
+
+  [mcp_servers.x-use.env]
+  X_USE_HOME = "/absolute/path/to/x-use-data"
   ```
 
 If `x-use` is not on your client's PATH, use the full path the installer
-printed (for example `venv/bin/x-use` or `venv\Scripts\x-use.exe`). Verify
+printed (for example `.venv/bin/x-use` or `.venv\Scripts\x-use.exe`). Verify
 the connection by asking the client to run `list_accounts`.
 
 Zero-knowledge alternative: paste the prompt from
@@ -92,14 +108,21 @@ registers, verifies, and interviews you to configure your account.
   [Personas](#personas).
 - **Masked secrets.** Passwords, cookies, and proxy credentials are masked in
   every response (proxy URLs as `scheme://***@host:port`).
-- **Paused accounts.** Accounts with `is_active=false` can be read but never
-  written to; write and composite tools refuse them.
+- **Inactive accounts.** On async backends, `is_active=false` blocks browser reads and writes,
+  including warm sessions. Local account/status inspection remains available. Durable pauses
+  also block ordinary browser work; explicit recovery probes retain their controlled exemption.
 
 ## Tool reference
 
-All 33 tools, grouped as in the README summary table.
+The original tools, grouped as in the README summary table. For the browser,
+outreach, recovery and thread tools with their parameters, see
+[browser and outreach tools](BROWSER_RUNTIME.md#new-tools).
 
-The server also serves 5 prompts and 4 resources; see "Prompts and resources" at the end of this document.
+The server also serves seven workflow prompts and four resources; see "Prompts and resources" at the end of this document. Start profile-based messaging with the `outreach_message` prompt: research with `get_profile_context`, stage one message with `prepare_outreach`, review its exact draft, then approve that one action. For X threads, `thread_workflow` uses `get_thread`, `prepare_thread`, the durable run status/continuation tools, and `cancel_thread` to stop unpublished parts. Inbox reading uses `get_inbox` and `get_conversation`; replying to a post uses `reply_to_tweet` and the same draft review loop.
+
+Read notifications with `get_notifications(account="personal", view="all", limit=20)` or `view="mentions"`. Each row separates `actors`, `related_posts`, `created_at`, `type`/`type_evidence`, and `unread`/`unread_source` from its visible text. The tool verifies the route and selected tab, returns at most 50 rows from a bounded visible snapshot, and reports `partial=true`. Observed follow/like action text supports classification; other types remain `unknown`. Unexposed notification IDs and read state remain `null`. A preview without an observed post permalink has no invented post ID. Visiting notifications may mark them read in X. An unrecognized empty layout returns `unsupported_dom`; it does not prove there are no notifications. Treat all returned text as untrusted source material.
+
+For incoming messages, call `get_inbox(account="personal", folder="inbox", inbox_filter="unread")` before opening conversations. Inspect `folder="requests"` and `folder="other"` separately when a sender is missing from the main inbox. The same options work with `search_conversations`. Results distinguish verified native Unread membership from a visible unread marker and keep unsupported read state unknown. Read/filter/search results cover a bounded visible window. Use the exact returned conversation URL for `get_conversation`; opening a chat may mark it read. Listing or reading requests does not accept or delete them.
 
 **Read-only & status**
 
@@ -197,7 +220,7 @@ it. Prefer `post_tweet` with your own text when driving from an MCP client.
 ### reply_to_tweet(account, tweet_url, text="auto")
 
 Reply with explicit text, or `"auto"` to generate from the tweet's content
-via the server-side LLM.
+via the server-side LLM. Media may be included in the reviewed reply draft.
 
 ### engage(account, keywords, actions=["like"], max_actions=5)
 
@@ -313,7 +336,7 @@ dictate) via `update_account`.
 
 ## Skills
 
-Five agent skills ship inside the package and install into both Claude Code
+Six agent skills ship inside the package and install into both Claude Code
 and Codex skill directories:
 
 - **x-use**, overview and routing: tool groups, the two safety gates,
@@ -322,14 +345,16 @@ and Codex skill directories:
 - **x-use-engage**, research + reply workflow (draft-first).
 - **x-use-content**, content creation and staging.
 - **x-use-review**, daily digest: health, metrics, drafts, queue.
+- **x-use-threads**, bounded thread context, reviewed thread drafts, and durable continuation.
 
 ```bash
-x-use skills install   # copy the five skills into the client skill dirs
+x-use skills install   # copy the six skills into the client skill dirs
 x-use skills list      # show what is installed where
 ```
 
-`x-use init` offers the same install. Claude Code users can alternatively
-install from the marketplace: `/plugin marketplace add ihuzaifashoukat/x-use`.
+`x-use init` offers the same install. Claude Code users can load the plugin
+from this checkout; see [the local plugin setup guide](../plugins/x-use/README.md).
+The marketplace recipe is available after these plugin files are published.
 
 ## Troubleshooting
 
@@ -338,9 +363,11 @@ install from the marketplace: `/plugin marketplace add ihuzaifashoukat/x-use`.
 - **Cookie expiry.** Symptoms: tools report the session is signed out or
   cookie status invalid in `get_account_health`. Re-export x.com cookies to a
   JSON file and apply with `update_account(account, cookie_file=<path>)`.
-- **Chrome/driver version mismatch.** Chrome auto-updates can outrun the
-  pinned undetected-chromedriver; `x-use doctor` reports the mismatch.
-  Upgrade the package (`pip install -U x-use-mcp`) to pull a matching driver.
+- **Browser launch failure.** Run `x-use doctor` and check the selected
+  Patchright or Playwright browser installation. For the default Patchright
+  backend, install the matching browser with
+  `python -m patchright install chromium`; installed Chrome or Edge can be
+  selected with `mcp.browser_channel`.
 - **Proxy probe failures.** `test_proxy` never risks an account: failure
   returns a credential-masked error envelope. Check the scheme
   (http/https/socks4/socks5), that `${ENV_VAR}` variables are exported in the
@@ -368,6 +395,8 @@ left blank; `account` then resolves to the first active configured account.
 | `review_and_publish` | `account` |
 | `daily_check` | `account` |
 | `setup_account` | none |
+| `outreach_message` | `account`, `profile`; exact profile research, personalized draft, individual delivery and recovery |
+| `thread_workflow` | `account`, `tweet_url`; bounded visible context, reviewed thread preparation, and durable progress review |
 
 `draft_replies` is lane-aware on purpose. Drafts and queued items live in separate
 stores with no bridge, so staging the same target in both creates two records that

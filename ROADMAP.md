@@ -1,8 +1,10 @@
 # Roadmap
 
-**twitter-automation-ai is becoming `x-use`**, browser-native AI agents for X (Twitter): multi-account, MCP-ready, no API keys required. The engine you know today (Selenium + LLM orchestration, per-account configs, proxies, metrics) stays the foundation. What changes in v2 is how you use it: an installable Python package, a proper CLI with a setup wizard, and an MCP server so Claude Desktop, Claude Code, Cursor, and other MCP clients can drive your X accounts directly. This roadmap is open to input, if you want to influence priorities, propose a tool, or challenge a decision, open an issue or start a discussion.
+**x-use** is a browser-native MCP server for X (Twitter), with multi-account support and no X API key requirement. The legacy Selenium batch engine remains available alongside the current async Patchright browser runtime. This roadmap tracks shipped work and future priorities; open an issue or discussion to propose a change.
 
 Legend: `[x]` shipped · `[ ]` planned or in progress.
+
+Current implementation work adds bounded conversation-thread reads, image context, reviewed thread drafts, and durable continuation with duplicate suppression. These tools are being documented as an unreleased addition; platform automation remains subject to X's rules and account restrictions.
 
 ---
 
@@ -40,7 +42,7 @@ The goal of v2.0: go from "clone the repo and run `python src/main.py`" to `pip 
 - [x] Lazy per-account browser session pool with idle timeout, so MCP calls stay fast and never hang the client
 - [x] **v2.1 MCP expansion**, account management tools (add/update/pause/remove with validated atomic writes), a persistent scheduled-action queue (`queue_post`, `queue_engagement`, `process_queue`, opt-in `auto_drain` worker) with jittered pacing and daily caps, and support tools (draft listing/rejection, run status, account health)
 - [x] **v2.2 agent-native LLM**, one OpenAI-compatible client (`llm`: api_key/base_url/model) replaces the gemini/openai/azure provider stack; interactive MCP use runs keyless (the calling agent writes the text, new `prepare_reply` context tool), server-side LLM only powers `"auto"` text and background automation
-- [x] **v2.3 agent media + skills** *(released, see [CHANGELOG.md](CHANGELOG.md))*, typed media on tweets with photos returned as MCP `ImageContent` on the read tools (new `get_tweet`; `prepare_reply`/`search_tweets` gain `include_images`), freeform account `persona`, composite draft-staging tools (`research_and_stage`, `draft_post_variations`), proxy pool management tools (`list_proxies`/`add_proxy`/`remove_proxy`/`test_proxy`), and a bundled 5-skill agent pack with a plugin marketplace plus one-prompt setup (`docs/SETUP_PROMPT.md`). 25 → 32 tools
+- [x] **v2.3 agent media + skills** *(released, see [CHANGELOG.md](CHANGELOG.md))*, typed media on tweets with photos returned as MCP `ImageContent` on the read tools (new `get_tweet`; `prepare_reply`/`search_tweets` gain `include_images`), freeform account `persona`, composite draft-staging tools (`research_and_stage`, `draft_post_variations`), proxy pool management tools (`list_proxies`/`add_proxy`/`remove_proxy`/`test_proxy`), and the v2.3-era 5-skill agent pack plus one-prompt setup (`docs/SETUP_PROMPT.md`). The v2.3 release added seven tools (25 → 32); later MCP additions are not included in that release count.
 - [x] **v2.3 hardening wave**, a pass driven by live testing against a real X account and a full-surface audit: whole-userinfo credential masking everywhere, queue cancel/crash-recovery/paused-drain fixes, cancel-safe session lifecycle, config-write and metrics atomicity, LLM empty-completion retries with a 1200-token default, and engine truthfulness (no action reports success without confirmation)
 
 ### Config hygiene & docs
@@ -88,7 +90,7 @@ Turn x-use from a tool into a platform you can extend without forking.
 
 ## Phase 4, threads & video transcription
 
-- [ ] Read and post threads (multi-tweet compositions) through the MCP tools
+- [ ] Implement bounded conversation context and reviewed, resumable thread runs through MCP. Current unreleased work adds read, prepare, inspect, continue, and cancel tools; see the current work note above.
 - [ ] Local video transcription with faster-whisper as an optional `[media]` extra, so agents can read video content keyless
 
 ---

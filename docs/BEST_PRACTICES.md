@@ -1,15 +1,18 @@
-# Best practices
+# Responsible operation
 
-How to run x-use without getting your account locked. Written against v2.3: Python 3.10+,
-Selenium plus an OpenAI-compatible LLM, driven either by the `x-use` CLI or by the MCP
-server from an agent client.
+x-use's MCP server uses async Patchright by default; optional Playwright support
+uses the same async runtime. The legacy batch engine uses Selenium. Interactive
+MCP use does not require an LLM key. Browser automation can still lead to
+account restrictions; x-use does not promise anonymity, undetectable activity,
+or protection from enforcement. Use an account you own or are authorized to
+manage, follow X's rules, and stop when X presents a challenge or rate limit.
 
 Read section 6 before you run anything. The rest is operational detail.
 
 ## 1. Account safety and rate limiting
 
-X profiles automation aggressively. The most effective protection is patience: low action
-volume, human-scale delays, and filters that skip marginal engagements.
+X may restrict automated activity, and local pacing settings cannot guarantee
+that it will not. Keep actions relevant and within the local limits you choose.
 
 Keep the conservative defaults. Delays are randomized between a minimum and maximum, per-run
 caps are low, and keyword scraping is bounded. The presets in `presets/accounts/` show
@@ -38,7 +41,7 @@ raise caps gradually while watching `data/metrics/<account_id>.json` for error s
 ## 2. Cookies and credentials
 
 Each account in `config/accounts.json` points at a cookie file through `cookie_file_path`.
-The file is a Selenium-compatible array of cookie objects for `x.com`. A working login needs
+The file is a JSON array of cookie objects for `x.com`. A working login needs
 valid `auth_token` and `ct0` cookies. Both. A file with only `auth_token` fails validation.
 
 Never commit real cookies. An `auth_token` is a full session credential: anyone holding it
@@ -62,26 +65,16 @@ rather than just file presence, so run one of them when logins start failing.
 
 ## 3. Proxies
 
-One account, one stable IP. X checks IP consistency per session, so the reliable pattern is
-a dedicated IP or sticky residential session per account, kept stable across runs. Never
-route several accounts through one exit IP, and avoid moving an established account to a new
-IP without a reason.
+Proxy routing is optional. The async MCP runtime supports HTTP/HTTPS and
+unauthenticated SOCKS5 proxies; account routes take precedence over the global
+route. Its named pools use stable account hashing. SOCKS4, authenticated
+SOCKS5, and rotating pools are not supported by the async runtime. Legacy
+Selenium proxy settings are described in
+[the configuration reference](CONFIG_REFERENCE.md).
 
-Set `proxy` on the account object to override the global `browser_settings.proxy`. Chrome
-applies it through `--proxy-server`. Proxy auth prompts are not handled interactively, so
-credentials go in the URL.
-
-Named pools live under `browser_settings.proxy_pools` and accounts reference them as
-`"proxy": "pool:<name>"`. Two strategies:
-
-- `hash` maps an `account_id` to a pool entry deterministically, so each account keeps the
-  same IP run after run. This is the one you want for accounts that post.
-- `round_robin` rotates across runs and persists its cursor. Use it for scraping-heavy work
-  where session identity matters less.
-
-Residential IPs with sticky sessions are strongly preferred for any account that posts,
-replies, or likes. Datacenter ranges are widely fingerprinted and score poorly. They are fine
-for cost-sensitive read-only scraping.
+A proxy does not make an authenticated account anonymous or prevent platform
+restrictions. Keep credentials out of source control and use the same
+configuration for the account's reads and writes.
 
 Keep proxy passwords out of config. Proxy strings support `${VAR}` interpolation, so
 `http://user:${RESI_PASS}@eu1.proxy.local:8080` expands at runtime from the process
@@ -96,26 +89,18 @@ You can manage pools over MCP with `list_proxies`, `add_proxy`, `remove_proxy`, 
 browser and reports the egress IP, so it tells you whether a proxy actually works before you
 attach it to an account.
 
-## 4. Stealth
+## 4. Legacy Selenium settings
 
-Prefer Chrome with undetected-chromedriver, which is the shipped default
-(`use_undetected_chromedriver: true`). You can layer `enable_stealth: true` on top for
-selenium-stealth's fingerprinting tweaks. `presets/settings/beginner-chrome-undetected.json`
-is a ready-made starting point.
+The `browser_settings` fields for undetected-chromedriver, selenium-stealth,
+user-agent generation, and window size apply to the legacy CLI batch engine.
+They do not configure the MCP browser runtime. The MCP server uses Patchright
+by default, with optional Playwright compatibility; see
+[the runtime guide](BROWSER_RUNTIME.md) for supported browser settings.
 
-Keep the user agent consistent per account. The default `user_agent_generation: "random"`
-picks a new UA each session, and a login whose browser changes every run looks synthetic.
-For long-lived accounts set `user_agent_generation: "custom"` with a realistic
-`custom_user_agent` and leave it alone. Pair it with a fixed `window_size`.
-
-Never run parallel logins to the same account. Two Selenium sessions sharing a cookie file
-means one account acting from two browsers, possibly two IPs, at once. That is a near-certain
-flag and it corrupts session state. The MCP server keeps one warm browser per account and
-serializes actions within it. Keep that invariant: no overlapping runs against one
-`accounts.json`, and never point two account entries at the same cookie file.
-
-For warming up accounts or debugging logins, run headed rather than headless. It is both less
-detectable and easier to watch.
+Do not run overlapping sessions for the same account. MCP sessions serialize
+browser work and use a host-local ownership lock, but separate computers do not
+share that lock. Keep one shared configuration and safety database for each
+account where concurrent operators may be involved.
 
 ## 5. LLM usage
 

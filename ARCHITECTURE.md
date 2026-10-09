@@ -2,7 +2,7 @@
 
 This document describes the architecture of **x-use** (formerly `twitter-automation-ai`): browser-native AI agents for X (Twitter), multi-account, MCP-ready, no API keys required.
 
-Sections 1 to 5 describe the engine as it exists today, packaged under `src/xuse/` since v2.0. Section 6 describes the v2.0 packaging, CLI, and MCP layer, which shipped with the rebrand; section 6.3 covers what is still planned.
+The current MCP runtime uses async Patchright with isolated Chromium contexts. [Browser runtime and outreach architecture](docs/BROWSER_RUNTIME.md) describes the default browser path, session ownership, durable policy and local campaigns. Sections below describe the retained Selenium batch engine and its original MCP adapter; they are historical compatibility documentation, not the default MCP browser path.
 
 ## 1. Overview
 
@@ -10,9 +10,9 @@ x-use is a Python 3.10+ framework that automates X accounts through a real brows
 
 Four principles shape the design:
 
-- **Browser-native.** All reads and writes go through a real Chrome or Firefox session authenticated with the account's own cookies. There is no dependency on the X API, its pricing tiers, or its write quotas.
-- **Config-driven.** Behavior is declared in `config/settings.json` (global defaults) and `config/accounts.json` (per-account overrides). Ready-made templates live in `presets/`. Code changes are never required to change what an account does.
-- **Per-account isolation.** Every account gets its own browser instance, cookie jar, optional proxy, LLM preferences, action budget, and metrics files. Accounts run as independent asyncio tasks; one account crashing does not take down the others.
+- **Browser-native.** The retained Selenium engine uses Chrome or Firefox; the async MCP runtime uses Patchright or Playwright with Chromium. Both authenticate with the account's own cookies and do not call the X API.
+- **Config-driven.** Most account behavior is declared in `config/settings.json` (global defaults) and `config/accounts.json` (per-account overrides). Ready-made templates live in `presets/`.
+- **Per-account isolation.** The retained Selenium batch engine gives each account its own browser instance, cookie jar, optional proxy, LLM preferences, action budget, and metrics files. Async MCP accounts use isolated contexts in a shared browser process; a process failure can affect all of its account sessions.
 - **LLM-augmented pipelines.** LLMs (OpenAI, Azure OpenAI, Gemini) are used as gates and generators inside deterministic pipelines: relevance scoring, sentiment classification, thread detection, and text generation. Heuristic fallbacks keep pipelines functional when an LLM call fails.
 
 ## 2. System Diagram
@@ -79,7 +79,7 @@ flowchart TD
 |---|---|
 | `src/xuse/orchestrator.py` | `TwitterOrchestrator`: loads config, spawns one asyncio task per account, runs the action pipelines, owns dedup keys and per-account cleanup. The legacy `python src/main.py` entry is a deprecation shim that runs this module. |
 | `src/xuse/cli.py`, `init_wizard.py`, `doctor.py` | Typer console script `x-use`: `run` (orchestrator with in-memory account/pipeline scoping), `init` (setup wizard), `doctor` (preflight checks), `mcp` (server entry). |
-| `src/xuse/mcp/` | MCP stdio server: `server.py` (FastMCP factory), `tools.py` / `write_tools.py` / `engage.py` (the 9 tools), `drafts.py` (draft store), `sessions.py` (lazy browser pool), `executor.py` / `actions.py` (execution, pacing, sanitized error envelopes). |
+| `src/xuse/mcp/` | MCP stdio server and tool groups for accounts, browser reads/writes, profiles, inbox, outreach, thread workflows, drafts, sessions, policy, and execution. `server.py` composes the FastMCP server; individual modules register bounded tool surfaces. |
 | `tests/` | pytest suite (pure logic + MCP contract tests), `pytest.ini`, CI in `.github/workflows/ci.yml`. |
 | `src/xuse/core/config_loader.py` | Loads and exposes `config/settings.json` and `config/accounts.json`; helper accessors like `get_twitter_automation_setting`. |
 | `src/xuse/core/browser_manager/` | Browser lifecycle. `drivers.py` (Chrome/Firefox init, undetected-chromedriver, stealth), `options.py` (driver options, headless, window size), `cookies.py` (load and inject cookie files), `ua.py` (user-agent generation), `service.py` (the `BrowserManager` facade, proxy resolution, signed-in detection). |
@@ -112,21 +112,21 @@ One run of `python src/main.py` executes the following per active account (see `
 6. **LLM gates.** `TweetAnalyzer` sits between scraping and acting: `score_relevance` filters candidates against configurable thresholds (`analysis_config`), `classify_sentiment` and `analyze_tweet_structured` feed the optional `engagement_decision` engine that picks quote vs. retweet vs. repost vs. like, and `check_if_thread_with_llm` confirms thread candidates before rewriting them.
 7. **Action with randomized delays.** After each successful action the task sleeps `random.uniform(min_delay_between_actions_seconds, max_delay_between_actions_seconds)` (likes use half that range) to avoid mechanical timing patterns.
 8. **Metrics append.** `MetricsRecorder` increments counters (posts, replies, retweets, quote_tweets, likes, errors) in `data/metrics/<account_id>.json` and appends one JSON line per action attempt, success or failure, with metadata, to `logs/accounts/<account_id>.jsonl`.
-9. **Cleanup in `finally`.** The browser driver is always closed and the run-finish timestamp recorded, even when a pipeline raises. Exceptions are logged with `exc_info` and surfaced by `asyncio.gather(..., return_exceptions=True)` without aborting sibling accounts.
+9. **Cleanup in `finally`.** The account task attempts to close its browser driver and record a run-finish timestamp, even when a pipeline raises. Exceptions are logged with `exc_info` and collected by `asyncio.gather(..., return_exceptions=True)` so sibling tasks can continue.
 
 ## 5. Reliability Mechanisms
 
 **Rate limiting.** Three layers: randomized inter-action delays (`min`/`max_delay_between_actions_seconds`), hard per-run caps (`max_posts_per_competitor_run`, `max_replies_per_keyword_run`, `max_retweets_per_keyword_run`, `max_likes_per_run`, `max_community_engagements_per_run`), and recency filters (`reply_only_to_recent_tweets_hours`, `community_reply_only_recent_tweets_hours`) that keep the bot out of stale conversations.
 
-**Dedup store.** The processed-action-key CSV guarantees at-most-once behavior per (action, account, tweet) within its dedup window, across process restarts. In-memory and on-disk sets are updated together immediately after each successful action.
+**Dedup store.** The processed-action-key CSV records and suppresses repeated (action, account, tweet) keys within its dedup window across process restarts. In-memory and on-disk sets are updated immediately after each successful action.
 
-**Categorized error handling.** Failures are handled at the narrowest useful scope: LLM relevance checks are wrapped so an analyzer failure degrades to "no filter" rather than skipping the pipeline; `generate_structured` retries up to `max_retries` and falls back from OpenAI JSON mode to plain prompting; each pipeline logs and counts failures via `metrics.increment('errors')` and moves to the next candidate; the whole account is wrapped in a catch-all so a hard failure in one account never propagates to others.
+**Categorized error handling.** Failures are handled at the narrowest useful scope: LLM relevance checks are wrapped so an analyzer failure degrades to "no filter" rather than skipping the pipeline; `generate_structured` retries up to `max_retries` and falls back from OpenAI JSON mode to plain prompting; each pipeline logs and counts failures via `metrics.increment('errors')` and moves to the next candidate; the whole account is wrapped in a catch-all so sibling account tasks can continue after one fails.
 
 **UI fallbacks.** X's DOM is hostile to automation. The publisher scrolls elements into view, waits for composer overlays to clear, and falls back to JavaScript clicks and Ctrl+Enter submission when native clicks are intercepted. The community audience selector scrolls X's virtualized list and JS-clicks entries by `community_id` first, visible name second.
 
 **Robust LLM parsing.** `extract_json_from_response_text` handles fenced ```json blocks, brace-balanced extraction from prose, and smart-quote/backtick cleanup before giving up, structured outputs survive imperfect model behavior.
 
-**Guaranteed browser cleanup.** `BrowserManager.close_driver()` runs in the account task's `finally` block, so crashed pipelines cannot leak headless browser processes.
+**Best-effort browser cleanup.** The legacy `BrowserManager.close_driver()` runs from the account task's `finally` block. The async session pools also attempt cleanup during shutdown and startup failures; operating-system process-handle tests cover the tested paths, but cleanup is not guaranteed after every failure.
 
 ## 6. v2.0 Packaging, CLI, and MCP Layer (Shipped)
 
@@ -147,11 +147,13 @@ v2.0 shipped the packaging, CLI, and MCP layer described here; the engine from s
 
 ### 6.2 MCP Server Layer (shipped in v2.0)
 
-Module: `src/xuse/mcp/`, built on the official MCP Python SDK **stable v1.x** `FastMCP` (`from mcp.server.fastmcp import FastMCP`) over **stdio** transport, so it plugs into Claude Desktop, Claude Code, Cursor, and Windsurf. Note: SDK v2 (alpha) renames `FastMCP` to `MCPServer` under `mcp.server.mcpserver`; x-use pins `mcp>=1,<2` until v2 stabilizes.
+Module: `src/xuse/mcp/`, built on the official MCP Python SDK **stable v1.x** `FastMCP` (`from mcp.server.fastmcp import FastMCP`) over **stdio** transport, so it plugs into Claude Desktop, Claude Code, Cursor, and Windsurf. Note: SDK v2 (alpha) renames `FastMCP` to `MCPServer` under `mcp.server.mcpserver`; x-use pins `mcp>=1.30,<2` for the annotations and structured results used by the tools.
 
-Every tool is a thin wrapper over an existing module, with no Selenium logic in
-the tool layer. A representative sample of what wraps what (the complete
-33-tool reference lives in [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md)):
+The MCP surface wraps the asynchronous browser runtime and durable local
+services. `run_cycle` is retained as a Selenium compatibility path. A
+representative sample of the public tool contracts is documented in
+[docs/MCP_GUIDE.md](docs/MCP_GUIDE.md) and
+[docs/BROWSER_RUNTIME.md](docs/BROWSER_RUNTIME.md):
 
 | Tool | Wraps |
 |---|---|
@@ -161,10 +163,10 @@ the tool layer. A representative sample of what wraps what (the complete
 | `search_tweets(keywords, limit)` | scraper keyword search |
 | `search_profile(profile, limit)` | scraper profile timeline (handle validated, URL rebuilt) |
 
-Beyond tools, the server serves two more protocol surfaces, both read-only to
-obtain and neither able to start a browser:
+Beyond tools, the server serves workflow prompts and read-only resources:
 
-- **Prompts** (`mcp/prompts.py`): the five workflows as protocol prompts, so
+- **Prompts** (`mcp/prompts.py`): protocol workflows such as setup, outreach,
+  and thread continuation, so
   clients without Agent Skills support get them without installing anything.
 - **Resources** (`mcp/resources.py`): `xuse://accounts`,
   `xuse://accounts/{account_id}`, `xuse://accounts/{account_id}/persona`, and
@@ -188,24 +190,24 @@ flowchart LR
     A --> P
 ```
 
-**Browser lifecycle for MCP** (`sessions.py`): a lazy per-account session pool. A browser session starts on the first tool call that needs it, stays warm for subsequent calls, and is reaped after an idle timeout (default ~10 min). Read-only tools never start a browser. Tool failures return structured, secret-sanitized error envelopes and never crash the server; stdout-bound logging is redirected to stderr to protect JSON-RPC framing.
+**Browser lifecycle for MCP** (`sessions.py`): lazy per-account contexts in a shared browser process. A session starts on the first browser-backed tool call, stays warm for subsequent calls, and is reaped after an idle timeout (default ~10 min). Local configuration, status and storage reads do not start a browser; X-backed read tools can start or reuse an account session. Caught tool failures return structured, secret-sanitized error envelopes. Errors outside those handlers can still stop the server; stdout-bound logging is redirected to stderr to protect JSON-RPC framing.
 
 ### 6.3 Later Phases
 
 - **Phase 2:** FastAPI dashboard over the existing `data/metrics/*.json` and JSONL event logs, draft-approval UI, official Docker image.
-- **Phase 3:** persona presets, plugin system, selector self-healing smoke tests in CI, Prometheus metrics.
+- **Phase 3:** runtime plugin system, selector self-healing smoke tests in CI, and Prometheus metrics. Persona presets and the Claude Code plugin are already shipped.
 
 Version numbers are deliberately left off both. See [ROADMAP.md](ROADMAP.md) for the current ordering.
 
 ## 7. Design Decisions and Trade-offs
 
-**Browser automation vs. the official API.** The X API's write tiers are priced far beyond hobby and indie budgets, and key capabilities used here (community posting, timeline scraping at scale, engagement browsing) are restricted or absent. Driving a real browser costs $0 in API fees and can do anything a logged-in user can. The price is fragility: X ships DOM changes without notice, so selectors (`src/xuse/features/scraper/selectors.py` and the publisher handlers) need occasional maintenance, and anti-bot pressure requires the stealth/proxy machinery. We accept that trade and engineer around it (centralized selectors, JS-click fallbacks, undetected-chromedriver, per-account proxies).
+**Browser automation vs. the official API.** The MCP server uses a logged-in Chromium browser and does not call the official X API. This avoids X API credentials and API fees, but page changes can break visible-page workflows and platform enforcement may still apply. The server pauses on challenges, rate limits, unsupported pages, and uncertain write outcomes. It makes no anonymity or restriction-prevention guarantee. The legacy Selenium batch engine remains for compatibility.
 
-**Cookie auth instead of password login.** Automated username/password login is the highest-signal bot behavior X can observe and frequently triggers challenges. Importing cookies from a session the user established manually is more reliable, keeps credentials out of config files entirely, and survives across runs. The cost, cookies expire and must be re-exported, is mitigated by `login_wait_seconds`, which lets a human complete login once in the opened browser while the run waits.
+**Cookie auth instead of password login.** x-use accepts an X cookie export from a session the operator established manually. Cookie files are sensitive local credentials; keep them private and re-export when they expire. The async MCP runtime does not persist decrypted browser state between server runs.
 
 **JSON configuration.** Plain JSON (validated by Pydantic at load time) keeps the barrier to entry low: no DSL, no database, diffable in git, and trivially templated, which is exactly what `presets/` does. The global-defaults-plus-per-account-overrides merge gives fleet-level control without duplicating config per account.
 
-**MCP wraps the orchestrator; it does not replace it.** The planned MCP layer is deliberately a thin adapter over the existing feature modules. The same engine serves both modes: unattended batch runs (`x-use run`, cron) and interactive agent-driven use (an LLM client calling individual tools). Keeping one engine means selector fixes, stealth improvements, and metrics land in both paths at once, and the MCP surface stays small enough to contract-test.
+**MCP and batch execution are separate paths.** The MCP server routes granular reads and writes through the async browser runtime and durable action policy. The legacy orchestrator remains available for Selenium batch runs; it is not the default MCP browser backend. Shared configuration and account records do not imply feature parity between both paths.
 
 ## 8. Extension Points
 

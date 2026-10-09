@@ -14,8 +14,12 @@ these steps, explaining what you're doing in one line each, and ask before
 anything that changes my system:
 
 1. Detect my OS and which AI client you are. Install x-use if missing:
-   `pip install x-use-mcp` (Python 3.10+ and Chrome required, tell me if
-   either is missing and stop). Verify: `x-use doctor`.
+   From a checkout use `py -3 scripts/setup_uv.py` on Windows or
+   `python3 scripts/setup_uv.py` on macOS/Linux. This installs uv locally,
+   locked dependencies and matching Chromium into an isolated environment.
+   Otherwise use `pip install x-use-mcp` followed by
+   `python -m patchright install chromium` (Python 3.10+ required).
+   Verify: `x-use doctor`. Use the `.venv` executable for a checkout install.
 2. Run `x-use skills install` to install the bundled agent skills.
 3. Register the MCP server in YOU (this client), then tell me to restart you:
    - Claude Desktop: add to claude_desktop_config.json:
