@@ -15,6 +15,8 @@ project follows [semantic versioning](https://semver.org/). See
 - Cancellation tests arm their deadline after the intended execution phase is
   observed, so slow initial storage cannot be mistaken for cancellation after
   a confirmed send. This changes CI fixtures only.
+- The PIN privacy test uses deterministic unique fixture IDs, preventing random
+  identifier collisions with its synthetic PIN from reporting a false leak.
 
 ## [3.0.0] - 2026-10-09
 

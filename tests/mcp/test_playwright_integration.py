@@ -315,6 +315,13 @@ async def test_post_search_and_queue_use_async_backend_and_same_budget(async_ser
 
 @pytest.mark.asyncio
 async def test_pin_never_enters_policy_database_or_tool_result(async_server, monkeypatch):
+    from itertools import count
+    from uuid import UUID
+
+    # A random UUID can contain the four test PIN digits by coincidence.
+    # Keep unique fixture IDs deterministic so both leakage scans stay strict.
+    identifiers = count(1)
+    monkeypatch.setattr("xuse.mcp.safety.uuid4", lambda: UUID(int=next(identifiers)))
     monkeypatch.setenv("XUSE_INBOX_PIN", "1234")
     ctx = async_server.xuse_ctx
     ctx.safety_store.pause("acc1", "pin_required")
