@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import platform
+import stat
 import subprocess
 import sys
 import tempfile
@@ -70,6 +71,68 @@ def installed_package_check(expect_installed: bool, driver: str) -> dict:
     assert cli.returncode == 0 and "mcp" in cli.stdout, "Installed CLI help failed."
     return {"version": distribution.version, "skill_count": len(skills), "cli_help": "passed",
             "driver": driver, "driver_version": metadata.version(driver)}
+
+
+def installed_init_check(directory: Path) -> dict:
+    """Exercise fresh setup and rerun using only disposable data/client homes."""
+    from xuse.core.config_loader import ConfigLoader, normalize_account_dict
+    from xuse.models import AccountConfig
+    from xuse.skills_installer import SKILL_TARGETS, packaged_skills
+
+    data_home = directory / "init-data"
+    client_home = directory / "init-client-home"
+    client_home.mkdir()
+    environment = dict(os.environ, PYTHONUTF8="1", PYTHONNOUSERSITE="1",
+                       X_USE_HOME=str(data_home), HOME=str(client_home),
+                       USERPROFILE=str(client_home))
+    for key in ("PYTHONPATH", "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"):
+        environment.pop(key, None)
+    command = [sys.executable, "-m", "xuse.cli", "init"]
+    # Enter accepts the recommended defaults for a fresh setup. Decline cookie
+    # import and API keys; no account export or browser is involved. Allow for
+    # Windows ACL setup under runner load without shortening individual phases.
+    fresh = subprocess.run(command, input="\n\nn\nn\n", cwd=directory,
+                           env=environment, capture_output=True, text=True,
+                           encoding="utf-8", timeout=90)
+    assert fresh.returncode == 0, "Fresh CLI init failed."
+    settings_path = data_home / "config/settings.json"
+    accounts_path = data_home / "config/accounts.json"
+    assert settings_path.is_file() and accounts_path.is_file(), "Init did not create configuration."
+    loader = ConfigLoader(settings_path, accounts_path)
+    assert loader.settings_error is None and loader.accounts_error is None
+    assert loader.get_setting("mcp.browser_backend") == "patchright"
+    assert loader.get_setting("mcp.browser_headless") is True
+    assert loader.get_setting("mcp.draft_mode") is True
+    assert loader.get_setting("queue.auto_drain.enabled") is False
+    assert not loader.get_setting("llm.api_key"), "Init wrote an API key."
+    accounts = loader.get_accounts_config()
+    assert len(accounts) == 1
+    account = AccountConfig.model_validate(normalize_account_dict(accounts[0]))
+    assert account.is_active is False and account.cookie_file_path
+    assert not (data_home / ".env").exists()
+    assert not list(data_home.glob("**/*cookies*.json")), "Init created a cookie export."
+    for path in (settings_path, accounts_path):
+        if os.name == "nt":
+            from xuse.core.windows_permissions import verify_private_sqlite_path
+            verify_private_sqlite_path(path, directory=False)
+        else:
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600, "Configuration is not private."
+    for name, _ in packaged_skills():
+        for target in SKILL_TARGETS:
+            assert (client_home / target / name / "SKILL.md").is_file(), "Init did not install isolated client skills."
+    # Operator edits must survive Enter on subsequent runs byte for byte.
+    settings_path.write_text('{"operator":"keep these exact bytes"}', encoding="utf-8")
+    accounts_path.write_text('[{"account_id":"existing","is_active":false}]', encoding="utf-8")
+    original = [path.read_bytes() for path in (settings_path, accounts_path)]
+    rerun = subprocess.run(command, input="\n\nn\n", cwd=directory,
+                           env=environment, capture_output=True, text=True,
+                           encoding="utf-8", timeout=90)
+    assert rerun.returncode == 0, "CLI init rerun failed."
+    assert [path.read_bytes() for path in (settings_path, accounts_path)] == original, "Init overwrote existing configuration."
+    return {"settings_created": True, "inactive_account": True,
+            "config_loader": "passed", "private_config": "passed",
+            "existing_config_preserved": True, "client_home_isolated": True,
+            "browser_started": False}
 
 
 async def package_protocol_check(directory: Path, expect_installed: bool, driver: str) -> dict:
@@ -245,6 +308,8 @@ async def run(args, report):
                 private_state_file(directory / ".bootstrap")
                 os.chdir(directory)
                 os.environ["X_USE_HOME"] = str(directory)
+                report["stage"] = "installed_init"
+                report["init"] = installed_init_check(directory)
                 report["stage"] = "mcp_protocol"
                 report["mcp"] = await asyncio.wait_for(package_protocol_check(directory, args.expect_installed, args.driver), timeout=45)
             if args.mode in ("browser", "all"):

@@ -4,6 +4,11 @@ the destination, _write_env preserves existing lines/comments, and choosing
 "skip" never writes an empty accounts.json.
 """
 import json
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 import typer
@@ -177,3 +182,59 @@ def test_preset_enter_recommends_mcp_only_for_new_config(
 def test_explicit_skip_overrides_recommended_preset(isolated_config, monkeypatch):
     monkeypatch.setattr(typer, "prompt", lambda *args, **kwargs: 0)
     assert wizard._choose_preset("settings", wizard.SETTINGS_PRESET_BLURBS) is None
+
+
+def test_source_presets_are_independent_of_private_data_home(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    data_home = tmp_path / "private data"
+    environment = dict(os.environ, X_USE_HOME=str(data_home), PYTHONPATH=str(root / "src"))
+    program = (
+        "import json; from xuse import init_wizard as w; "
+        "print(json.dumps({'presets': str(w.PRESETS_DIR), 'data': str(w.PROJECT_ROOT)}))"
+    )
+    result = subprocess.run([sys.executable, "-c", program], cwd=tmp_path,
+                            env=environment, capture_output=True, text=True, check=True)
+    found = json.loads(result.stdout)
+    assert Path(found["presets"]) == root / "presets"
+    assert Path(found["data"]) == data_home
+    assert not data_home.exists()
+
+
+def test_installed_fallback_creates_private_inactive_config_and_preserves_rerun(tmp_path, monkeypatch):
+    import xuse.skills_installer as skills
+
+    data_home = tmp_path / "new private home"
+    monkeypatch.setattr(wizard, "CONFIG_DIR", data_home / "config")
+    monkeypatch.setattr(wizard, "PROJECT_ROOT", data_home)
+    monkeypatch.setattr(wizard, "PRESETS_DIR", tmp_path / "no checkout presets")
+    monkeypatch.setattr(typer, "prompt", lambda *args, **kwargs: kwargs["default"])
+    monkeypatch.setattr(typer, "confirm", lambda *args, **kwargs: False)
+    monkeypatch.setattr(skills, "install_skills", lambda: {"installed": []})
+
+    wizard.run_wizard()
+
+    settings_path = data_home / "config/settings.json"
+    accounts_path = data_home / "config/accounts.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    accounts = json.loads(accounts_path.read_text(encoding="utf-8"))
+    assert settings["mcp"] == {
+        "browser_backend": "patchright", "browser_headless": True, "draft_mode": True,
+    }
+    assert settings["queue"]["auto_drain"]["enabled"] is False
+    assert len(accounts) == 1 and accounts[0]["is_active"] is False
+    assert wizard._validate_accounts(accounts) == []
+    assert not (data_home / ".env").exists()
+    assert not list(data_home.glob("**/*cookies*.json"))
+    if os.name == "nt":
+        from xuse.core.windows_permissions import verify_private_sqlite_path
+        for path in (settings_path, accounts_path):
+            verify_private_sqlite_path(path, directory=False)
+    else:
+        for path in (settings_path, accounts_path):
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    settings_path.write_text('{"operator":"keep these exact bytes"}', encoding="utf-8")
+    accounts_path.write_text('[{"account_id":"keep-existing"}]', encoding="utf-8")
+    original = [path.read_bytes() for path in (settings_path, accounts_path)]
+    wizard.run_wizard()
+    assert [path.read_bytes() for path in (settings_path, accounts_path)] == original

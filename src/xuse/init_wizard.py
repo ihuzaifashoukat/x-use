@@ -6,13 +6,14 @@ Writes (only after confirmation when a file already exists):
 - config/<account_id>_cookies.json  imported from a user-supplied export
 - .env                  LLM API keys (never written into settings.json)
 
-Reads only; engine config is validated with the Pydantic models before writing.
+Reads source presets or bundled defaults, validates account models, and writes
+private configuration files. Existing files require overwrite confirmation.
 """
 import json
 import re
-import shutil
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import typer
 
@@ -22,9 +23,30 @@ from xuse.core.config_loader import (
     normalize_account_dict as _normalize_account_dict,
 )
 from xuse.doctor import check_cookie_data
+from xuse.core.local_state import private_state_file
 from xuse.models import AccountConfig
+from xuse.setup_defaults import DEFAULT_ACCOUNTS, DEFAULT_SETTINGS
 
-PRESETS_DIR = PROJECT_ROOT / "presets"
+# Read-only templates belong to the checkout, independently of the operator's
+# writable X_USE_HOME. Installed wheels use the minimal defaults below.
+PRESETS_DIR = Path(__file__).resolve().parents[2] / "presets"
+
+
+@dataclass(frozen=True)
+class _BuiltInPreset:
+    name: str
+    data: Any
+
+    def read_text(self, encoding: str = "utf-8") -> str:
+        return json.dumps(self.data)
+
+
+Preset = Union[Path, _BuiltInPreset]
+
+BUILT_IN_PRESETS = {
+    "settings": _BuiltInPreset("beginner-patchright.json", DEFAULT_SETTINGS),
+    "accounts": _BuiltInPreset("reviewed_outreach.json", DEFAULT_ACCOUNTS),
+}
 
 # Account ids are interpolated into cookie file paths; same charset rule as
 # the MCP layer (no dots, slashes, or backslashes — no traversal).
@@ -57,19 +79,20 @@ ENV_KEYS = [
 # Small helpers
 # ---------------------------------------------------------------------------
 
-def _load_json(path: Path) -> Any:
+def _load_json(path: Preset) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _write_json(path: Path, data: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    private_state_file(path).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def _choose_preset(kind: str, blurbs: Dict[str, str]) -> Optional[Path]:
+def _choose_preset(kind: str, blurbs: Dict[str, str]) -> Optional[Preset]:
     """Show a numbered preset menu; return the chosen path or None to skip."""
     folder = PRESETS_DIR / kind
     presets = sorted(folder.glob("*.json")) if folder.is_dir() else []
+    if not presets and kind in BUILT_IN_PRESETS:
+        presets = [BUILT_IN_PRESETS[kind]]
     if not presets:
         typer.secho(f"No presets found in {folder} — skipping.", fg=typer.colors.YELLOW)
         return None
@@ -134,7 +157,7 @@ def _write_env(path: Path, updates: Dict[str, str]) -> None:
                 continue
         out.append(line)
     out += [f"{k}={v}" for k, v in remaining.items()]
-    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    private_state_file(path).write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +174,7 @@ def _settings_step() -> None:
     if target.exists() and not typer.confirm(f"{target} already exists. Overwrite?", default=False):
         typer.echo("Keeping existing settings.json.")
         return
-    shutil.copyfile(preset, target)
+    _write_json(target, _load_json(preset))
     typer.secho(f"Wrote {target} from preset {preset.name}.", fg=typer.colors.GREEN)
 
 
@@ -196,8 +219,7 @@ def _import_cookies(account_id: str) -> str:
         return cookie_rel
     if dest.exists() and not typer.confirm(f"{dest} already exists. Overwrite?", default=False):
         return cookie_rel
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(src_path, dest)
+    private_state_file(dest).write_bytes(src_path.read_bytes())
     typer.secho(f"Imported cookies to {dest}.", fg=typer.colors.GREEN)
     return cookie_rel
 
@@ -327,4 +349,4 @@ def run_wizard() -> None:
                     fg=typer.colors.YELLOW)
     typer.echo("\nDone. Next steps:")
     typer.echo("  1. x-use doctor   # verify browser, cookies, keys, proxies")
-    typer.echo("  2. x-use run      # start the automation")
+    typer.echo("  2. x-use mcp      # connect the reviewed MCP workflow to your client")

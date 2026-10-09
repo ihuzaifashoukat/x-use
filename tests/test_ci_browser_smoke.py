@@ -58,14 +58,20 @@ async def test_package_smoke_canonicalizes_temp_root_and_isolates_home(
         observed.append("protocol")
         return {"browser_started": False}
 
+    def init_check(directory):
+        assert directory == tmp_path.resolve() / "private-fixture"
+        observed.append("init")
+        return {"config_loader": "passed"}
+
     monkeypatch.setattr(smoke.tempfile, "TemporaryDirectory", temporary_directory)
     monkeypatch.setattr(smoke, "installed_package_check", package_check)
     monkeypatch.setattr(local_state, "private_state_file", prepare_private_file)
     monkeypatch.setattr(smoke, "package_protocol_check", protocol_check)
+    monkeypatch.setattr(smoke, "installed_init_check", init_check)
     report = {"status": "failed"}
     await smoke.run(SimpleNamespace(mode="package", expect_installed=False, driver="patchright"), report)
 
-    assert observed == ["package", "private", "protocol"]
+    assert observed == ["package", "private", "init", "protocol"]
     assert report["status"] == "passed" and "stage" not in report
     assert Path.cwd() == previous
     assert os.environ.get("X_USE_HOME") == inherited_home
@@ -118,6 +124,7 @@ async def test_smoke_accepts_os_temp_symlink_without_weakening_private_state(tmp
 
     monkeypatch.setattr(smoke.tempfile, "TemporaryDirectory", temporary_directory)
     monkeypatch.setattr(smoke, "installed_package_check", lambda *args: {})
+    monkeypatch.setattr(smoke, "installed_init_check", lambda *args: {})
     monkeypatch.setattr(smoke, "package_protocol_check", protocol_check)
     report = {}
     await smoke.run(SimpleNamespace(mode="package", expect_installed=False, driver="patchright"), report)
