@@ -10,6 +10,12 @@ project follows [semantic versioning](https://semver.org/). See
 
 ## [Unreleased]
 
+No changes recorded after the 3.0.0 release candidate.
+
+## [3.0.0] - release candidate
+
+Prepared for release; tagging and publication follow passing CI and maintainer review.
+
 ### Added
 
 - V3 Outreach development: 70 MCP tools, seven workflow prompts, and six
@@ -47,10 +53,21 @@ project follows [semantic versioning](https://semver.org/). See
   bodies, and pending-message confirmation during UI hydration have regression
   coverage. Unknown read or reply state remains explicit.
 
+### Migration from 2.x
+
+- The default MCP backend is Patchright. Install its matching Chromium with
+  `python -m patchright install chromium`, or use the one-command setup script.
+  Existing Selenium batch workflows remain available with explicit legacy presets.
+- Use an absolute `X_USE_HOME` for stable private state. Import valid X cookies;
+  sample credentials are placeholders and cannot authenticate an account.
+- Interrupted approved drafts become uncertain, and interrupted queue writes
+  stop for inspection. Reconcile their outcomes before attempting another write.
+- MCP structured errors now also set `isError=true`; clients should inspect both
+  protocol status and the returned recovery metadata.
+
 Validation scope and remaining limitations are recorded in
 [the resilience audit](docs/RESILIENCE_AUDIT.md) and
-[the tool validation matrix](docs/TOOL_VALIDATION.md). V3 remains unreleased;
-the existing package version is retained until a release is prepared.
+[the tool validation matrix](docs/TOOL_VALIDATION.md).
 
 ---
 

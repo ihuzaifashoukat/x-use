@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from xuse import __version__
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("xuse_mcp_config", ROOT / "scripts/mcp_config.py")
@@ -42,6 +44,26 @@ def test_claude_plugin_manifests_are_valid_and_reference_x_use():
     assert plugin["name"] == "x-use"
     assert set(servers["x-use"]) >= {"command", "args"}
     assert servers["x-use"]["args"] == ["mcp"]
+
+
+@pytest.mark.parametrize("manifest_path", ("marketplace.json", ".claude-plugin/marketplace.json"))
+def test_marketplace_entries_resolve_to_current_plugin(manifest_path):
+    """Directory scanners must install an existing plugin at the product version.
+
+    The marketplace's top-level version describes that marketplace, not the
+    x-use product; only its plugin entries need the package release version.
+    """
+    marketplace = json.loads((ROOT / manifest_path).read_text(encoding="utf-8"))
+    entries = [entry for entry in marketplace["plugins"] if entry["name"] == "x-use"]
+    assert len(entries) == 1
+    entry = entries[0]
+    plugin_root = (ROOT / entry["source"]).resolve()
+    assert plugin_root.is_relative_to(ROOT)
+    plugin = json.loads((plugin_root / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
+    assert plugin["name"] == entry["name"]
+    assert entry["version"] == plugin["version"] == __version__
+    assert (plugin_root / ".mcp.json").is_file()
+    assert (plugin_root / "skills/x-use/SKILL.md").is_file()
 
 
 def test_runtime_sdk_floor_and_requirements_file_stay_in_sync():

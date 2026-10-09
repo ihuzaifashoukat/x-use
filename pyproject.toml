@@ -62,3 +62,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 xuse = ["skills_pack/*/SKILL.md"]
+
+[tool.uv]
+# The package version and description are dynamic build inputs. Track them so
+# an editable sync after a version bump cannot reuse stale distribution metadata.
+cache-keys = [{file = "pyproject.toml"}, {file = "src/xuse/__init__.py"}, {file = "README.md"}, {file = "LICENSE"}]
