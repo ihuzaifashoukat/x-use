@@ -16,6 +16,34 @@ from xuse.queue import QueueStore
 from helpers import call_tool, make_account, FakeMetrics
 
 
+# These phases include private SQLite I/O with a 10 s connection timeout.
+# A fixture phase is an ordering assertion, not a 2 s storage latency contract.
+STORAGE_WAIT_SECONDS = 30
+
+
+async def wait_for_tool_phase(task, event):
+    waiter = asyncio.create_task(event.wait())
+    try:
+        done, _ = await asyncio.wait(
+            {task, waiter}, timeout=STORAGE_WAIT_SECONDS,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if task in done:
+            result = task.result()
+            pytest.fail(f"Tool finished before the expected fixture phase: {result!r}")
+        assert waiter in done, "Tool did not reach the expected fixture phase"
+    finally:
+        waiter.cancel()
+        await asyncio.gather(waiter, return_exceptions=True)
+
+
+async def settled_tool_result(task):
+    # Observe owned work without wait_for injecting another cancellation.
+    done, _ = await asyncio.wait({task}, timeout=STORAGE_WAIT_SECONDS)
+    assert task in done, "Tool did not settle after the fixture released it"
+    return task.result()
+
+
 class Browser:
     def __init__(self):
         self.calls = []
@@ -320,8 +348,8 @@ async def test_running_send_cannot_be_reconciled_until_it_finishes(async_server)
     ctx.session_pool.browser.send_message = delayed_send
     draft = await call_tool(async_server, "send_message", {"account": "acc1", "recipient": "@alex", "text": "reviewed"})
     task = asyncio.create_task(call_tool(async_server, "approve_draft", {"draft_id": draft["draft_id"]}))
-    await asyncio.wait_for(entered.wait(), 2)
     try:
+        await wait_for_tool_phase(task, entered)
         action = ctx.safety_store.status("acc1")["recent_actions"][0]
         assert action["status"] == "started"
         result = await call_tool(async_server, "resolve_action_outcome", {
@@ -330,7 +358,8 @@ async def test_running_send_cannot_be_reconciled_until_it_finishes(async_server)
         assert ctx.safety_store.status("acc1")["recent_actions"][0]["status"] == "started"
     finally:
         release.set()
-    assert (await asyncio.wait_for(task, 2))["ok"]
+        result = await settled_tool_result(task)
+    assert result["ok"]
 
 
 @pytest.mark.asyncio
@@ -370,10 +399,15 @@ async def test_client_cancellation_preserves_uncertain_send_for_reconciliation(a
     draft = await call_tool(async_server, "send_message", {
         "account": "acc1", "recipient": "@alex", "text": "reviewed"})
     task = asyncio.create_task(call_tool(async_server, "approve_draft", {"draft_id": draft["draft_id"]}))
-    await asyncio.wait_for(entered.wait(), 2)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(task, 2)
+    try:
+        await wait_for_tool_phase(task, entered)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await settled_tool_result(task)
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
     record = ctx.safety_store.status("acc1")["uncertain_actions"][0]
     assert record["status"] == "uncertain"
     assert ctx.safety_store.reference("acc1", record["action_id"])["draft_id"] == draft["draft_id"]
@@ -394,14 +428,15 @@ async def test_repeated_cancellation_settles_ledger_before_releasing_account(
 
     ctx = async_server.xuse_ctx
     ctx.config_loader.settings.setdefault("mcp", {})["tool_timeout_seconds"] = 1 if trigger == "timeout" else 10
-    entered, release = threading.Event(), threading.Event()
+    entered, release = asyncio.Event(), threading.Event()
+    loop = asyncio.get_running_loop()
     sending = asyncio.Event()
     method = "reserve" if boundary == "reserve" else "finish"
     original = getattr(ctx.safety_store, method)
 
     def held_ledger_call(*args, **kwargs):
-        entered.set()
-        if not release.wait(5):
+        loop.call_soon_threadsafe(entered.set)
+        if not release.wait(STORAGE_WAIT_SECONDS):
             raise AssertionError("ledger fixture did not release")
         return original(*args, **kwargs)
 
@@ -429,9 +464,9 @@ async def test_repeated_cancellation_settles_ledger_before_releasing_account(
     task = asyncio.create_task(approve())
     try:
         if boundary == "uncertain_finish" and trigger == "client":
-            await asyncio.wait_for(sending.wait(), 2)
+            await wait_for_tool_phase(task, sending)
             task.cancel()
-        assert await asyncio.to_thread(entered.wait, 2)
+        await wait_for_tool_phase(task, entered)
         if trigger == "timeout":
             # Allow the tool deadline to cancel the operation while this
             # ledger thread is still blocked; then cancel its caller too.
@@ -448,13 +483,8 @@ async def test_repeated_cancellation_settles_ledger_before_releasing_account(
                 pytest.fail("Account lock released while ledger work is in flight")
         assert busy.value.reason == "account_busy"
         release.set()
-        # Reservation can still initialize private SQLite files after release.
-        # Its connection timeout is 10 s; cleanup has no 2 s latency contract.
-        # Observe completion without injecting another cancellation via wait_for.
-        done, _ = await asyncio.wait({task}, timeout=30)
-        assert task in done, "Reserved action did not settle after ledger release"
         with pytest.raises(asyncio.CancelledError):
-            task.result()
+            await settled_tool_result(task)
     finally:
         release.set()
         if not task.done():
@@ -479,7 +509,8 @@ async def test_repeated_cancellation_settles_pause_bookkeeping(async_server, mon
     from xuse.mcp.safety import PolicyError
 
     ctx = async_server.xuse_ctx
-    entered, release = threading.Event(), threading.Event()
+    entered, release = asyncio.Event(), threading.Event()
+    loop = asyncio.get_running_loop()
     method = "pause" if boundary == "challenge_pause" else "resume_if_unchanged"
     if boundary == "recovery_resume":
         ctx.safety_store.pause("acc1", "challenge")
@@ -490,8 +521,8 @@ async def test_repeated_cancellation_settles_pause_bookkeeping(async_server, mon
     original = getattr(ctx.safety_store, method)
 
     def held_pause_call(*args, **kwargs):
-        entered.set()
-        if not release.wait(5):
+        loop.call_soon_threadsafe(entered.set)
+        if not release.wait(STORAGE_WAIT_SECONDS):
             raise AssertionError("pause fixture did not release")
         return original(*args, **kwargs)
 
@@ -514,7 +545,7 @@ async def test_repeated_cancellation_settles_pause_bookkeeping(async_server, mon
 
     task = asyncio.create_task(perform())
     try:
-        assert await asyncio.to_thread(entered.wait, 2)
+        await wait_for_tool_phase(task, entered)
         for _ in range(3):
             task.cancel()
             await asyncio.sleep(0)
@@ -524,7 +555,7 @@ async def test_repeated_cancellation_settles_pause_bookkeeping(async_server, mon
                 pytest.fail("Pause bookkeeping lost its account lock")
         release.set()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, 2)
+            await settled_tool_result(task)
     finally:
         release.set()
         if not task.done():
@@ -546,14 +577,15 @@ async def test_repeated_cancellation_settles_pause_bookkeeping(async_server, mon
 @pytest.mark.parametrize("cancel_count", [1, 3])
 async def test_client_cancellation_before_denied_reservation_keeps_draft_pending(async_server, monkeypatch, cancel_count):
     ctx = async_server.xuse_ctx
-    entered, release = threading.Event(), threading.Event()
+    entered, release = asyncio.Event(), threading.Event()
+    loop = asyncio.get_running_loop()
     cancelling = asyncio.Event()
     original_reserve, original_shield = ctx.safety_store.reserve, asyncio.shield
     ctx.safety_store.caps["message"] = 0
 
     def held_reservation(*args, **kwargs):
-        entered.set()
-        if not release.wait(5):
+        loop.call_soon_threadsafe(entered.set)
+        if not release.wait(STORAGE_WAIT_SECONDS):
             raise AssertionError("reservation fixture did not release")
         return original_reserve(*args, **kwargs)
 
@@ -570,16 +602,16 @@ async def test_client_cancellation_before_denied_reservation_keeps_draft_pending
         "account": "acc1", "recipient": "@alex", "text": "reviewed"})
     task = asyncio.create_task(call_tool(async_server, "approve_draft", {"draft_id": draft["draft_id"]}))
     try:
-        assert await asyncio.to_thread(entered.wait, 2)
+        await wait_for_tool_phase(task, entered)
         task.cancel()
-        await asyncio.wait_for(cancelling.wait(), 2)
+        await wait_for_tool_phase(task, cancelling)
         for _ in range(cancel_count - 1):
             task.cancel()
             await asyncio.sleep(0)
         assert not task.done()
         release.set()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, 2)
+            await settled_tool_result(task)
     finally:
         release.set()
     assert ctx.draft_store.get(draft["draft_id"]).status == "pending"
@@ -611,7 +643,7 @@ async def test_cancellation_racing_completed_failure_consumes_child_exception(as
 
     caller = asyncio.create_task(perform())
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(caller, 2)
+        await settled_tool_result(caller)
     assert cancellation_ids == ["synthetic-action"]
     assert children[0].done() and not children[0].cancelled()
     # asyncio uses this marker to emit "Task exception was never retrieved"
@@ -638,11 +670,11 @@ async def test_new_manual_pause_survives_successful_inflight_recovery(async_serv
         ctx.session_pool.browser.verify_session = successful_probe
     task = asyncio.create_task(call_tool(async_server, operation, {"account": "acc1"}))
     try:
-        await asyncio.wait_for(entered.wait(), 2)
+        await wait_for_tool_phase(task, entered)
         assert (await call_tool(async_server, "pause_account_actions", {"account": "acc1"}))["ok"]
     finally:
         release.set()
-    result = await asyncio.wait_for(task, 2)
+        result = await settled_tool_result(task)
     assert not result["ok"] and result["error"]["reason"] == "pause_changed"
     status = ctx.safety_store.status("acc1")
     assert status["paused"] and status["pause"]["reason"] == "manual_pause"
