@@ -10,6 +10,12 @@ project follows [semantic versioning](https://semver.org/). See
 
 ## [Unreleased]
 
+### Added
+
+- Guarded manual release recovery runs corrected CI fixtures while building the
+  original published tag. Runtime and packaging differences are rejected, and
+  the full cross-platform verification remains required before publication.
+
 ### Fixed
 
 - Cancellation tests arm their deadline after the intended execution phase is

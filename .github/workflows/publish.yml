@@ -16,27 +16,134 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published GitHub release tag to recover
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-release-${{ github.ref }}
+  # Serialize all publication events: reusable CI shares the caller's workflow
+  # and ref, so concurrent manual recoveries from main could cancel its checks.
+  group: ${{ github.workflow }}-publication
   cancel-in-progress: false
 
 jobs:
+  release_guard:
+    name: Resolve and guard the immutable release source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate published release and recovery differences
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+          CALLER_SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import ast
+          import json
+          import os
+          import re
+          import subprocess
+          import urllib.parse
+          import urllib.request
+
+          def fail(message):
+              raise SystemExit(message)
+
+          def git(*arguments):
+              return subprocess.check_output(["git", *arguments])
+
+          tag = os.environ["RELEASE_TAG"]
+          number = r"(?:0|[1-9][0-9]*)"
+          if not re.fullmatch(rf"v{number}\.{number}\.{number}(?:(?:a|b|rc){number})?", tag):
+              fail("Release tag must be a safe v-prefixed package version.")
+          event = os.environ["GITHUB_EVENT_NAME"]
+          if event == "workflow_dispatch":
+              branch = os.environ["DEFAULT_BRANCH"]
+              if not branch or os.environ["GITHUB_REF"] != f"refs/heads/{branch}":
+                  fail("Manual recovery must run from the repository default branch.")
+          elif event != "release":
+              fail("Unsupported publication event.")
+          caller = os.environ["CALLER_SHA"]
+          if git("rev-parse", "HEAD").decode().strip() != caller:
+              fail("Guard checkout must match the exact caller commit.")
+
+          url = (os.environ["GITHUB_API_URL"].rstrip("/") + "/repos/"
+                 + os.environ["GITHUB_REPOSITORY"] + "/releases/tags/"
+                 + urllib.parse.quote(tag, safe=""))
+          request = urllib.request.Request(url, headers={
+              "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+              "Accept": "application/vnd.github+json",
+          })
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  release = json.load(response)
+          except Exception:
+              fail("Target must name an accessible published GitHub release.")
+          if (not isinstance(release, dict)
+                  or release.get("tag_name") != tag or release.get("draft") is not False
+                  or not release.get("published_at")):
+              fail("Target must name an existing published GitHub release.")
+
+          # Resolve the tag once. Every publishing checkout uses this SHA,
+          # never a branch or a second resolution of the mutable tag ref.
+          release_sha = git("rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}").decode().strip()
+          changes = git("diff", "--name-only", "--no-renames", "-z", release_sha, caller, "--")
+          allowed_files = {"CHANGELOG.md", "CONTRIBUTING.md", ".github/workflows/publish.yml"}
+          forbidden = [path for path in changes.decode("utf-8").split("\0")
+                       if path and not (path.startswith("tests/") or path in allowed_files)]
+          if forbidden:
+              fail("Release recovery changes forbidden paths: " + ", ".join(forbidden))
+
+          # Read the version as data; do not execute a target's Python module.
+          module = ast.parse(git("show", f"{release_sha}:src/xuse/__init__.py").decode("utf-8"))
+          versions = [node.value.value for node in module.body
+                      if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Name) and target.id == "__version__"
+                              for target in node.targets)
+                      and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)]
+          if versions != [tag[1:]]:
+              fail("Release tag must match the package version at the release commit.")
+          version = versions[0]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"release_sha={release_sha}\nrelease_tag={tag}\nversion={version}\n")
+          print(f"Verified published release {tag} at {release_sha} against caller {caller}.")
+          PY
+
   verify:
     name: Verify supported environments before publishing
+    needs: release_guard
+    # A local reusable workflow and its github context use the exact caller
+    # commit. Recovery therefore tests corrected fixtures on the default branch.
     uses: ./.github/workflows/ci.yml
 
   build:
     name: Build distributions
-    needs: verify
+    needs: [release_guard, verify]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.release_guard.outputs.release_sha }}
           persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -44,9 +151,11 @@ jobs:
           python-version: "3.12"
 
       - name: Check the release tag against package metadata
+        env:
+          RELEASE_VERSION: ${{ needs.release_guard.outputs.version }}
         run: >-
           python -c "import os, runpy; version=runpy.run_path('src/xuse/__init__.py')['__version__'];
-          assert os.environ['GITHUB_REF_NAME'].removeprefix('v') == version,
+          assert os.environ['RELEASE_VERSION'] == version,
           'Release tag must match the package version before publishing.'"
 
       - name: Build sdist and wheel
@@ -84,10 +193,12 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          skip-existing: false
 
   mcp-registry:
     name: Publish to MCP Registry
-    needs: publish
+    needs: [release_guard, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -96,14 +207,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.release_guard.outputs.release_sha }}
           persist-credentials: false
-
-      - name: Derive version from the release tag
-        id: version
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Publishing $VERSION to the MCP Registry."
 
       # The registry validates against the live PyPI record, so wait for the
       # new version to be queryable and confirm its description carries the
@@ -112,7 +217,7 @@ jobs:
       # failing here with a clear message beats a cryptic registry rejection.
       - name: Wait for PyPI and verify the ownership marker
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release_guard.outputs.version }}
         run: |
           for attempt in $(seq 1 20); do
             if curl -sf "https://pypi.org/pypi/x-use-mcp/$VERSION/json" -o pypi.json; then
@@ -131,7 +236,7 @@ jobs:
 
       - name: Sync server.json to the released version
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release_guard.outputs.version }}
         run: |
           jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' \
             server.json > server.tmp && mv server.tmp server.json

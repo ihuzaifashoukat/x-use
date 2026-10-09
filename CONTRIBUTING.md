@@ -106,6 +106,17 @@ the glob; use explicit distribution paths in shells that do not).
 Tagging and publishing are maintainer actions after review and passing CI.
 The release workflow verifies the tag and runs CI before PyPI/MCP publication.
 
+If publication fails because release test fixtures need correction, maintainers
+can run **Publish to PyPI** manually from the repository default branch with
+`release_tag` set to the existing published GitHub release tag (for example,
+`v3.0.0`). Full CI runs on that exact caller commit; the distributions and MCP
+Registry checkout use the original tag's resolved commit. Recovery rejects
+differences outside `tests/`, `CHANGELOG.md`, `CONTRIBUTING.md`, and
+`.github/workflows/publish.yml`, so runtime, packaging, and the PyPI README must
+still match the release. Publication runs serialize, tags stay unchanged, and
+an already uploaded PyPI version fails rather than being skipped. Other changes
+require a new version and release.
+
 ## Reports and community
 
 Search [existing issues](https://github.com/ihuzaifashoukat/x-use/issues) before
