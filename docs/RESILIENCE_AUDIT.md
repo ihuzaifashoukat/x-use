@@ -4,6 +4,56 @@ Audit dates: 2026-10-08 through 2026-10-09. Scope: the MCP stdio server, browser
 
 The current follow-up review and earlier verification totals are separated below. All changes retain the existing package layout and X-only scope.
 
+## 3.0.0 release preparation
+
+Package and product manifests now use 3.0.0. This is release preparation;
+merging, tagging and publication remain separate maintainer actions. The
+current inventory is 70 tools, seven prompts, four resources and seven bundled
+skills. The new `x-use-inbox` skill covers message reads, unread/request folders,
+contextual approved sends, notifications and recovery. It is included in both
+the wheel and the identical Claude plugin skill tree. Independent fictional
+workflow checks covered unknown read state, unsupported folders, request
+acceptance, uncertain sends and unknown notification actors/types.
+
+Presets are reusable configuration inputs. Fresh setup now offers Patchright
+settings and an inactive reviewed-outreach account, while existing configuration
+defaults to preservation. Working Selenium presets retain their explicit legacy
+purpose. The tracked data directory contains documentation and dummy cookie/proxy
+examples; its obsolete account-metrics snapshot was removed. Private runtime
+files are not part of these repository changes.
+
+Remote CI exposed and reproduced three platform issues: older Python cancellation
+could lose a reserved action's recovery ID, Windows tests could use default
+checkout state instead of isolated fixtures, and macOS temporary-directory
+aliases and padded `ps` timestamps failed strict path/date checks. Fixes preserve
+private-state and process-ownership enforcement. Repeated-cancellation regressions
+also hold the account lock through reservation and outcome bookkeeping, preserve
+confirmed success, and leave uncertain sends recoverable.
+
+The CI source matrix retains Python 3.10–3.14 on Windows, Linux and macOS,
+including synthetic OS process-identity checks. Required installed-wheel native
+tests run both async drivers on Python 3.12 on each OS. Test collection confirmed
+the source/native partition covered every case; a missing selected driver fails
+the native job. Locked installation, dependency advisory and container jobs are
+separate. Follow the matching commit in the
+[branch CI runs](https://github.com/ihuzaifashoukat/x-use/actions/workflows/ci.yml?query=branch%3Afeat%2Fv3-outreach)
+for remote completion; earlier failures are diagnostic evidence, not a passing
+release gate. No new live-account action was performed for this release cleanup.
+
+The local source partition passed **1,491 tests**, with eight platform skips,
+ten native cases assigned to the wheel partition, and two existing legacy UTC
+deprecation warnings, in 196.15 seconds on Windows/Python 3.14.7. The portable
+macOS timestamp cases were also checked separately after the CI diagnosis.
+
+Local validation includes 133 focused MCP policy/cancellation tests passing on
+both Python 3.10 and 3.14, strict wheel/sdist metadata checks, and a clean 3.0.0
+wheel exposing all seven skills and both MCP entry points with 70 tools, seven
+prompts and zero invalid protocol messages. Its synthetic browser smoke
+intercepted five requests and forwarded none externally. The platform-specific
+timestamp regression accepts observed whitespace padding and still rejects a
+malformed timestamp suffix. Historical test totals below describe their earlier
+snapshots and should not be read as the current skill inventory.
+
 ## Notifications and incoming-message verification
 
 `get_notifications` now returns structured actors, related post references or unlinked previews, timestamps, supported event types with evidence, and nullable read state. Both All and Mentions require a verified route and selected tab before and after extraction. A repeated live All read caused zero extra document loads; Mentions returned structured post rows. Unknown types, unavailable notification IDs and unexposed unread state remain explicit. The focused notification suite passed 101 checks, including native fixtures on both supported drivers and MCP protocol validation.

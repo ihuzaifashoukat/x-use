@@ -127,7 +127,8 @@ fields should preserve existing account overrides or provide migration notes.
 Skills are edited in the packaged source and synchronized to plugin copies.
 
 CI checks Python 3.10–3.14 across Windows, Linux and macOS, locked installs,
-installed-wheel native fixtures, containers and dependency advisories. It does
+installed-wheel native fixtures for both async browser drivers on Python 3.12,
+containers and dependency advisories. It does
 not use real account credentials. [The audit](docs/RESILIENCE_AUDIT.md) and
 [tool matrix](docs/TOOL_VALIDATION.md) separate controlled live evidence from
 synthetic coverage. [Contributing](CONTRIBUTING.md) documents local commands and

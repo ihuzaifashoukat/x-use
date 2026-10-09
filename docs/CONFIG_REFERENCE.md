@@ -94,12 +94,13 @@ Notes
   - auto_drain.max_actions_per_account: per-account budget per tick. Default `3`.
   - Queued items execute only via an explicit `process_queue` call or the auto-drain worker. Queue caps/pacing apply on both paths, and the async browser safety ledger also applies. A queued uncertain write cannot automatically bypass the action ledger's duplicate guard.
 
-MCP media behavior (v2.3 read tools: `get_tweet`, `prepare_reply`, `search_tweets`)
+MCP media behavior (`get_tweet`, `prepare_reply`, `search_tweets`, `search_profile`, `get_thread`)
 
-- include_images: per-tool default, `true` for `get_tweet` and `prepare_reply`, `false` (opt-in) for `search_tweets`. When on, photos additionally attach as MCP image content so a vision-capable client sees them.
-- Bounds: up to 4 photos per tweet; the first photo of up to 5 tweets per search.
-- Re-encode: each fetched photo is converted to JPEG, max 1024px on the long edge, max 200KB; fetch timeout 5s. Failed fetches are skipped, never errors.
-- Fallback: the JSON envelope always carries the typed `media` list (photos with alt text; videos as poster + URL only), so clients without image support lose nothing.
+- include_images: `true` by default for `get_tweet` and `prepare_reply`; opt-in for search, profile and thread reads. Images attach as MCP content for vision-capable clients.
+- Bounds: up to four photos per individual post, or the first photo of up to five posts per search/profile result. Thread reads attempt up to five eligible photos/video posters with concurrency three and return source mappings and coverage. A poster is not the video's content; audio/video transcription is unavailable.
+- Re-encode: downloaded images become JPEG, at most 1024px on the long edge and 200KB. Downloads have an 8MB byte cap, a 40-million-pixel decode cap and bounded timeouts. Failed images retain their URL metadata without failing the read.
+- Transport: public HTTPS image hosts are restricted, redirects are disabled, and no account cookies or ambient authentication are sent. HTTP/HTTPS account proxies carry the media request; SOCKS accounts retain URLs without downloading. An invalid route never falls back to direct access.
+- Fallback: the structured result preserves media URLs, available alt text and media type when image blocks are unavailable. Clients without image support cannot analyze the pixels from metadata alone.
 
 accounts.json (per account)
 

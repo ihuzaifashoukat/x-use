@@ -1,5 +1,12 @@
 # MCP tool validation matrix
 
+The 3.0.0 release preparation adds the `x-use-inbox` workflow skill; the tool
+inventory remains 70. Seven skills now ship in both the package and plugin.
+Current packaging, cancellation and cross-platform CI changes are documented in
+[the release-preparation audit](RESILIENCE_AUDIT.md#300-release-preparation).
+No live-account tests were added during that cleanup, so the individual live
+statuses below retain their recorded scope.
+
 This inventory covers the 70 tools registered in the current MCP server, using `data/dev/tool-inventory-current.json` as the tool-name/schema inventory. “Automated coverage” names repository tests that exercise the registered wrapper or the behavior it delegates to; it does not imply a real X account was used. Live status is taken only from safe aggregate fields in the live audit reports. The earlier broad read and inbox audits made no external writes. Separate authorized checks published two test posts and confirmed a controlled incoming-request reply; their results are distinguished below.
 
 Effect labels describe the tool's intended effect:

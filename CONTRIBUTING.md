@@ -56,8 +56,12 @@ uv run --locked --extra dev pytest -q tests/browser
 ```
 
 Linux may need `patchright install --with-deps chromium` with permission to
-install OS packages. CI separately runs native scenarios against a clean
-installed wheel, so an editable source import cannot hide packaging mistakes.
+install OS packages. CI runs source and synthetic process-identity checks on
+every supported Python/OS combination. It separately requires native scenarios
+against a clean installed wheel on Python 3.12 across all three OSes, using both
+Patchright and Playwright with their matching Chromium installations. An editable
+source import cannot hide packaging mistakes, and a missing selected browser
+fails that required partition instead of silently skipping it.
 `scripts/ci_browser_smoke.py` checks CLI/MCP startup and synthetic browser
 behavior; it is different from the reserved `smoke` marker for authorized
 live-account tests.

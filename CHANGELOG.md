@@ -18,8 +18,10 @@ Prepared for release; tagging and publication follow passing CI and maintainer r
 
 ### Added
 
-- V3 Outreach development: 70 MCP tools, seven workflow prompts, and six
+- V3 Outreach development: 70 MCP tools, seven workflow prompts, and seven
   bundled agent skills, with a Claude Code plugin and local marketplace.
+- A dedicated `x-use-inbox` skill for contextual messages, unread/request
+  triage, structured notifications and uncertain-delivery recovery.
 - Structured inbox, conversation, notification, profile, thread, and media
   reads. Inbox filters expose unread evidence and request folders; analytics
   availability reports subscription gates explicitly.
@@ -42,6 +44,12 @@ Prepared for release; tagging and publication follow passing CI and maintainer r
 - Root and packaged setup skills document installation and client registration;
   the existing deferred SDK import keeps startup work limited.
 - Containers separate credential-free introspection from the browser runtime.
+- Fresh interactive setup offers a Patchright settings preset and an inactive
+  reviewed-outreach account. Existing configurations remain the default to keep;
+  working Selenium batch presets are explicitly labelled and retain their purpose.
+- Contribution, setup, skill, configuration and runtime documentation describe
+  the current execution paths. Tracked data contains dummy input examples; the
+  obsolete account-metrics snapshot was removed.
 
 ### Fixed
 
@@ -52,6 +60,15 @@ Prepared for release; tagging and publication follow passing CI and maintainer r
 - Inbox reload loops, stale conversation reads, timestamp-contaminated message
   bodies, and pending-message confirmation during UI hydration have regression
   coverage. Unknown read or reply state remains explicit.
+- Cold-start cancellation on older supported Python versions drains the pending
+  session before returning. Browser timeouts preserve the reserved action ID
+  needed to inspect uncertain writes. Repeated cancellation retains the account
+  lock until bookkeeping settles and preserves confirmed delivery outcomes.
+- Cross-platform tests isolate default state, cookie fallbacks and proxy counters
+  from local account files. Installed-package smoke checks resolve native macOS
+  temporary-directory paths before applying private-state checks. Browser
+  ownership capture accepts macOS process timestamps padded by `ps` while
+  retaining strict date and process-identity validation.
 
 ### Migration from 2.x
 
