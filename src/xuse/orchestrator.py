@@ -553,6 +553,13 @@ class TwitterOrchestrator:
                     for tweet_candidate in tweets_for_keyword:
                         if retweets_made >= current_action_config.max_retweets_per_keyword_run:
                             break
+                        action_key = f"retweet_{account.account_id}_{tweet_candidate.tweet_id}"
+                        if action_key in self.processed_action_keys:
+                            logger.info(
+                                f"[{account.account_id}] Already retweeted or processed tweet "
+                                f"{tweet_candidate.tweet_id}. Skipping."
+                            )
+                            continue
                         # Optional relevance filter: reuse likes filter settings if available
                         try:
                             acc_ac = account.action_config
@@ -571,6 +578,9 @@ class TwitterOrchestrator:
                             continue
                         interaction_success = await publisher.retweet_tweet(tweet_candidate)
                         if interaction_success:
+                            self.file_handler.save_processed_action_key(
+                                action_key, timestamp=datetime.now().isoformat())
+                            self.processed_action_keys.add(action_key)
                             retweets_made += 1
                             metrics.increment('retweets')
                             metrics.log_event('retweet', 'success', {'source': 'keyword', 'keyword': keyword, 'tweet_id': tweet_candidate.tweet_id})
