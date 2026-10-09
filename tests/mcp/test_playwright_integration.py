@@ -431,10 +431,14 @@ async def test_repeated_cancellation_settles_ledger_before_releasing_account(
     entered, release = asyncio.Event(), threading.Event()
     loop = asyncio.get_running_loop()
     sending = asyncio.Event()
+    timeout_elapsed = asyncio.Event()
+    finish_statuses = []
     method = "reserve" if boundary == "reserve" else "finish"
     original = getattr(ctx.safety_store, method)
 
     def held_ledger_call(*args, **kwargs):
+        if method == "finish":
+            finish_statuses.append(args[2])
         loop.call_soon_threadsafe(entered.set)
         if not release.wait(STORAGE_WAIT_SECONDS):
             raise AssertionError("ledger fixture did not release")
@@ -446,6 +450,34 @@ async def test_repeated_cancellation_settles_ledger_before_releasing_account(
             sending.set()
             await asyncio.Event().wait()
         ctx.session_pool.browser.send_message = hanging_send
+
+    if trigger == "timeout":
+        original_wait = asyncio.wait
+        timeout_phase = sending if boundary == "uncertain_finish" else entered
+
+        async def phase_deadline_wait(tasks, *, timeout=None, return_when=asyncio.ALL_COMPLETED):
+            # This test targets cancellation at a selected action phase. Arm
+            # the real tool deadline there, after unrelated reservation I/O.
+            if timeout == 1:
+                phase_waiter = asyncio.create_task(timeout_phase.wait())
+                try:
+                    done, _ = await original_wait(
+                        set(tasks) | {phase_waiter}, timeout=STORAGE_WAIT_SECONDS,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    assert done, "Tool did not reach the selected cancellation phase"
+                    if phase_waiter not in done:
+                        # Deliver an early real operation failure immediately.
+                        return await original_wait(tasks, timeout=0, return_when=return_when)
+                finally:
+                    phase_waiter.cancel()
+                    await asyncio.gather(phase_waiter, return_exceptions=True)
+            result = await original_wait(tasks, timeout=timeout, return_when=return_when)
+            if timeout == 1 and not result[0]:
+                timeout_elapsed.set()
+            return result
+
+        monkeypatch.setattr(asyncio, "wait", phase_deadline_wait)
 
     draft = await call_tool(async_server, "send_message", {
         "account": "acc1", "recipient": "@alex", "text": "reviewed"})
@@ -467,10 +499,12 @@ async def test_repeated_cancellation_settles_ledger_before_releasing_account(
             await wait_for_tool_phase(task, sending)
             task.cancel()
         await wait_for_tool_phase(task, entered)
+        if method == "finish":
+            assert finish_statuses == ["succeeded" if boundary == "succeeded_finish" else "uncertain"]
         if trigger == "timeout":
-            # Allow the tool deadline to cancel the operation while this
-            # ledger thread is still blocked; then cancel its caller too.
-            await asyncio.sleep(1.1)
+            # Observe the actual deadline before repeatedly cancelling its
+            # caller while the selected ledger call remains blocked.
+            await wait_for_tool_phase(task, timeout_elapsed)
         else:
             task.cancel()
         for _ in range(2):

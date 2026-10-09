@@ -10,7 +10,11 @@ project follows [semantic versioning](https://semver.org/). See
 
 ## [Unreleased]
 
-No changes recorded yet.
+### Fixed
+
+- Cancellation tests arm their deadline after the intended execution phase is
+  observed, so slow initial storage cannot be mistaken for cancellation after
+  a confirmed send. This changes CI fixtures only.
 
 ## [3.0.0] - 2026-10-09
 
