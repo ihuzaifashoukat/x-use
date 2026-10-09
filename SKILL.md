@@ -13,8 +13,8 @@ Read this first: **the steps split at the client restart.** Everything before it
 is shell work, because x-use's MCP tools do not exist yet. Everything after it is
 tool work. Do not try to call `add_account` before step 4 has completed.
 
-Explain each step in one line as you go, and confirm before anything that changes
-the user's system.
+Explain each step briefly as you go. The setup request authorizes routine local
+installation and registration; ask only for missing choices or credentials.
 
 ## 1. Check the prerequisites
 
@@ -108,10 +108,10 @@ and state stay stable when the client starts from another working directory.
   X_USE_HOME = "/absolute/path/to/x-use-data"
   ```
 
-**Now tell the user to restart the client, and stop.** A stdio MCP server is
-loaded at client startup, so nothing you do will make the tools appear in the
-current session. When they come back, confirm the connection with
-`list_accounts`. An empty list is the correct answer at this point.
+If this client cannot reload MCP servers in the current session, tell the user
+to restart the client and pause tool-dependent setup until the tools appear.
+When connected, confirm with `list_accounts`. An empty list is the correct
+answer before the first account is added.
 
 ## 5. Add the account
 
@@ -135,9 +135,10 @@ The file is validated and copied server-side. **Never ask the user to paste
 cookie contents into the conversation.** The path-only design exists precisely so
 the values never cross the wire, and pasting them defeats it.
 
-Verify with `get_account_health("main")`. Cookie status should be valid. If it is
-not, the export is stale or from the wrong domain, so have them redo it while
-actually logged in.
+Verify with `get_account_health(account="main")`. This checks the local cookie
+file and configuration without logging into X; valid cookie structure does not
+prove a live authenticated session. Inspect reported problems, then use a
+bounded browser read to verify the session. Stop for a login or account challenge.
 
 ## 6. Configure the account
 
@@ -179,23 +180,41 @@ browser session, so the next action pays a cold start.
   `update_account(account, proxy="pool:<name>")`.
 - **An LLM key:** interactive use needs none. You are the writer, and the server
   drives the browser. A key is only needed for unattended background automation
-  and `"auto"` text, set under `llm` in `config/settings.json`.
+  and `"auto"` text, set under `llm` in the data home's `config/settings.json`.
 
 ## 9. Prove it works
 
-Stage one real but harmless draft, a reply or a post, and show it with
-`list_drafts`.
+With the default `mcp.draft_mode=true`, stage one requested reply or post and
+show its full payload with `get_draft` or `list_drafts`. If draft mode has been
+disabled, ordinary post/reply tools execute immediately and cannot serve as a
+draft-only smoke check. `prepare_thread`, messages, and follows always stage,
+but do not create unrelated work solely to test the installation.
 
-Then tell the user plainly: **write tools return a draft and change nothing on X.
-Only `approve_draft(draft_id)` publishes.** That gate is on by default and it is
-the reason this is safe to hand to an agent.
+Explain the execution boundary: ordinary writes draft by default, and
+`approve_draft(draft_id)` executes a reviewed draft. Messages, follows and
+threads always require that approval. Queued work executes through
+`process_queue` or an explicitly enabled auto-drain worker; the legacy
+`run_cycle` executes immediately. Honor prior authorization for an exact action
+and payload; setup alone does not authorize publication or outreach.
+
+For requested inbox verification, `get_inbox(account="main", folder="inbox",
+inbox_filter="unread", limit=5)` reads only the visible folder. Requests and
+other folders are separate; reads do not accept requests. Unknown read state
+stays unknown. Opening a conversation or visiting `get_notifications` may mark
+items read. An encrypted inbox uses `unlock_inbox(account="main",
+pin_env_var="XUSE_INBOX_PIN")` after the owner sets the PIN in the server
+environment; never request the PIN in chat.
 
 ## When something fails
 
 Run `x-use doctor`, read the actual error, fix that cause, and only then
-continue. Every tool returns `{"ok": true, ...}` or
-`{"ok": false, "error": {"type", "message"}}`. On an error envelope, explain it
-and stop rather than retrying in a loop.
+continue. Tools carry `{"ok": true, ...}` or
+`{"ok": false, "error": {"type", "message"}}`; media reads can also attach images.
+Inspect returned state even on success envelopes: partial context, unavailable
+analytics or a blocked thread is not completed work. For an uncertain write,
+read `get_account_safety`, inspect X and its action ID, and use
+`resolve_action_outcome` only with observed `succeeded` or `not_sent` evidence.
+Do not automatically retry a timeout or unknown outcome.
 
 ## After setup
 
@@ -205,7 +224,8 @@ The installed skills take over: **x-use-engage** for research and replies,
 
 Clients without skill support get the same workflows as MCP prompts
 (`research_niche`, `draft_replies`, `review_and_publish`, `daily_check`,
-`setup_account`), plus read-only resources (`xuse://accounts`,
+`setup_account`, `outreach_message`, `thread_workflow`), plus read-only resources
+(`xuse://accounts`, `xuse://accounts/{account_id}`,
 `xuse://accounts/{account_id}/persona`, `xuse://drafts/pending`) for context
 worth attaching rather than fetching.
 

@@ -19,11 +19,15 @@ MAX_REPLY_CHARS = 270  # mirrors executor.MAX_REPLY_CHARS, the hard clamp on rep
 
 GATES = """\
 Two gates protect this account. Do not work around either one.
-1. Write tools (post_tweet, reply_to_tweet, generate_and_post, engage) return a
-   draft and change nothing on X. Only approve_draft(draft_id) publishes.
-   If a write response has NO draft_id, draft mode is off on this server and the
-   action ALREADY PUBLISHED. Stop and say so.
-2. queue_post and queue_engagement only store work. Only process_queue runs it.
+1. Ordinary write tools draft when mcp.draft_mode is enabled (default).
+   With it disabled, post_tweet, reply_to_tweet, generate_and_post and engage
+   execute immediately. Use them to stage only when draft mode is enabled.
+   approve_draft(draft_id) executes a reviewed draft. Messages, follows,
+   outreach and thread preparation always draft; run_cycle runs immediately.
+2. queue_post and queue_engagement store final payloads. process_queue executes
+   due work directly, or the opt-in auto_drain worker can execute it. Review the
+   full payload and scheduling authorization before enqueueing with auto-drain.
+Inspect response states; a missing draft_id alone does not prove publication.
 Publish only the concrete actions the user authorized. Existing authorization
 for the reviewed content is sufficient; do not ask for it again."""
 
@@ -140,7 +144,7 @@ correct; never pad the list."""
 
     @server.prompt(
         description="Write and stage X replies or posts for one account in its persona. "
-                    "Produces drafts or queued items for review and publishes nothing."
+                    "Uses the draft or queue lane; check draft mode and auto-drain before staging."
     )
     def draft_replies(account: str = "", tweet_urls: str = "", lane: str = "draft") -> str:
         """Stage replies or posts, written by you, in the account's voice."""
@@ -172,8 +176,9 @@ server's dedup check and surface as a confusing failure.
 6. Repeat one at a time, at most 3 unless the user asks for more.
 
 Never pass text="auto". It hands the writing to a server-side LLM that needs an
-API key and has less context than you. Finish by listing what is staged and
-reminding the user that nothing is public yet."""
+API key and has less context than you. Finish by listing the returned draft or
+queue states. Report confirmed publication only from delivery evidence; an
+enabled queue worker can execute items independently."""
 
     @server.prompt(
         description="Review everything staged for one X account and publish only what the "
@@ -223,35 +228,55 @@ never approve it again or re-stage already published parts."""
         acc = _resolve(ctx, account)
         return f"""Give a daily digest for account `{acc}`. Read-only unless the user directs otherwise.
 
-1. `get_account_health("{acc}")`. Report cookie validity FIRST; nothing else works
-   without it. Then config validity, warm session, queue depth, pending drafts.
-2. `get_metrics("{acc}")` for counters and the last events. Summarize in two or
-   three lines and always include errors.
-3. `list_drafts(status="pending", account="{acc}")` as a numbered table.
+1. `get_account_health("{acc}")`. Report local cookie-file and config validity,
+   warm session, queue depth and pending drafts. This does not verify a live X
+   login. Continue local inspection if cookies are invalid; fix them before
+   browser work with `update_account(account, cookie_file=...)` when authorized.
+2. `get_metrics("{acc}")` for local action counters and recent events. These are
+   recorded x-use actions, not full X engagement or owner analytics. Summarize
+   in two or three lines and include errors.
+3. `get_account_safety(account="{acc}")` for pauses, budgets and uncertain action
+   IDs, then `list_drafts(status="pending", account="{acc}")` as a numbered table.
+   Inspect relevant uncertain/partial drafts too; pending work omits those states.
 4. `list_queue(account="{acc}")`. Call out anything `failed`, with its `last_error`.
-   Items at max attempts are dead and need cancelling or re-staging.
-5. If the account has `self_handles` set, `search_profile(profile="@<handle>",
-   limit=10, account="{acc}")` to see what actually published recently, and
-   `get_tweet` anything over a day old for its public counts.
+   Follow next_offset until null. Never re-stage an uncertain or interrupted
+   write just because its queue status is failed; inspect X and the action ID.
+5. For requested public activity and a usable session, read a self_handles
+   profile with `search_profile(profile="@<handle>", limit=5, account="{acc}")`,
+   and `get_tweet` on selected posts for visible public counts. This is partial.
+6. For requested incoming activity, `get_inbox(account="{acc}", folder="inbox",
+   inbox_filter="unread", limit=5)` before opening conversations. Inspect requests
+   and other folders separately; reads do not accept requests. Unknown read state
+   remains unknown. `get_notifications(account="{acc}", view="all", limit=5)` or
+   view="mentions" reads a bounded structured snapshot. Visiting notifications
+   or opening a conversation may mark items read on X.
 
-Then ask what to do. Only on an explicit instruction: `approve_draft`,
-`reject_draft`, `process_queue`, or `cancel_queued_action`. Change nothing on your
-own initiative."""
+For authorized decisions, inspect full draft/queue payloads before approve_draft,
+reject_draft, process_queue or cancel_queued_action. Honor existing authorization
+for exact actions and payloads; ask only for missing decisions. process_queue
+executes due work directly, and enabled auto-drain may run it independently.
+Do not treat a digest request as publication approval. For an uncertain action,
+inspect X before resolve_action_outcome; never guess not_sent or resend to test it."""
 
     @server.prompt(
         description="Set up x-use from nothing: verify the install, add an X account from a "
                     "cookie export, and configure its niche, keywords, and persona."
     )
     def setup_account() -> str:
-        """Conversational onboarding. The user never edits a config file."""
-        return """Set up x-use with the user. They should never open a config file. Confirm each
-step before moving on, and skip anything already done.
+        """Conversational onboarding within the user's setup authorization."""
+        return """Set up the requested x-use account. Skip completed steps and honor setup
+authorization for routine local installation, registration and configuration.
+Ask for missing account/persona choices or credential paths. Setup alone does
+not authorize publication, messages or follows.
 
 1. Install check. Run `x-use doctor` (browser/driver, cookies, LLM key, proxies).
    From a checkout, run `python scripts/setup_uv.py` for locked uv setup and the
    matching browser. For an installed package, `uv tool install x-use-mcp`, then
    install Chromium with the same environment's Patchright. Interactive use
-   needs no LLM key at all: the calling model writes the text.
+   needs no LLM key at all: the calling model writes the text. If MCP tools are
+   unavailable, register the server with an absolute executable path and stable
+   X_USE_HOME. Reload the client connection if supported, otherwise restart it;
+   continue tool-dependent work only once tools appear.
 
 2. Account and cookies. Ask for a short id like `main` or `brand`. Then explain
    the cookie export: install a cookie-export browser extension, log into x.com,
@@ -259,7 +284,9 @@ step before moving on, and skip anything already done.
    Call `add_account(account_id, cookie_file=<path>)`. The file is validated and
    copied server-side; cookie values never pass through the conversation, so do
    not ask the user to paste their contents. Verify with
-   `get_account_health(account)`.
+   `get_account_health(account)`. This verifies local file/config structure,
+   not whether X accepts the live session. Inspect reported problems and use
+   a bounded browser read to verify login; stop for login/account challenges.
 
 3. Niche. Ask what they work on, which keywords to watch, and whose posts they
    want to engage with. Apply with `update_account(account, target_keywords=[...],
@@ -267,12 +294,28 @@ step before moving on, and skip anything already done.
 
 4. Self handles. Ask for their actual X handle and set
    `update_account(account, self_handles=["handle"])`. Without it the own-post
-   guard cannot fire and nothing can find their published posts later.
+   guard cannot identify their own posts. Published thread URLs are available
+   separately through get_thread_run.
 
 5. Persona. Ask how they want to sound, then `update_account(account, persona=...)`.
    Under 4000 characters, markdown, covering voice, topics, reply style, what to
    avoid, and one or two example replies. Batch config edits: each update_account
    closes the warm browser session and the next action pays a cold start.
 
-6. Prove it. Stage one real but harmless draft, show it with `list_drafts`, and
-   tell them plainly that nothing publishes until they say approve_draft."""
+6. Prove it. With mcp.draft_mode enabled (default), stage one requested reply or
+   post and show its full payload with get_draft/list_drafts. Ordinary post/reply
+   tools execute immediately with draft mode off. Messages, follows and threads
+   always stage; do not create unrelated actions solely to test installation.
+   approve_draft executes reviewed drafts. Queued work executes via process_queue
+   or opt-in auto_drain, and legacy run_cycle executes immediately. Prior user
+   authorization must cover the exact account, target and payload.
+
+Requested inbox checks use get_inbox with folder=inbox, requests or other and
+inbox_filter=all, unread or read. Results are bounded and unknown unread state
+stays unknown; reads never accept requests. Opening chats or visiting
+notifications may mark items read. For pin_required, use
+`unlock_inbox(account=..., pin_env_var="XUSE_INBOX_PIN")` only after the owner sets
+that server variable; never request the PIN in chat or store it in drafts.
+Stop for challenges, rate limits or unsupported UI. An uncertain write needs
+get_account_safety and inspection of X before resolve_action_outcome with
+observed succeeded or not_sent evidence; never automatically resend it."""

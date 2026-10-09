@@ -1,5 +1,5 @@
 """Drift guard: plugins/x-use/skills/ must mirror src/xuse/skills_pack/
-byte-for-byte, and the root SKILL.md must match what sync_skills.py composes.
+byte-for-byte. The root setup skill is maintained independently.
 Run scripts/sync_skills.py when this fails."""
 import filecmp
 import sys
@@ -55,9 +55,8 @@ def test_root_skill_is_the_setup_skill():
     ):
         assert required in flat, f"root SKILL.md no longer covers: {required}"
 
-    # The ordering constraint that actually trips agents up: a stdio server is
-    # only loaded at client startup, so tools cannot appear mid-session.
-    assert "restart the client" in flat, "root SKILL.md must tell the user to restart"
+    # Clients without MCP reload support need a restart before tool-dependent setup.
+    assert "restart the client" in flat, "root SKILL.md must cover clients needing a restart"
     # Cookie values must never be pasted into a conversation.
     assert "Never ask the user to paste" in flat
 
