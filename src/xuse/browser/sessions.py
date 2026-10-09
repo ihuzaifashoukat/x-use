@@ -98,7 +98,10 @@ class _ProcessInspector:
         for line in output.splitlines():
             parts = line.split(None, 2)
             if len(parts) == 3:
-                result[int(parts[0])] = (int(parts[1]), time.mktime(time.strptime(parts[2], "%a %b %d %H:%M:%S %Y")))
+                # BSD ps pads lstart to its column width, even as the final
+                # field. Keep strict date parsing after removing that padding.
+                birth = time.mktime(time.strptime(parts[2].strip(), "%a %b %d %H:%M:%S %Y"))
+                result[int(parts[0])] = (int(parts[1]), birth)
         return result
 
     def pin(self, pid, birth, cutoff):
