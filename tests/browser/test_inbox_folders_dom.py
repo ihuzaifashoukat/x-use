@@ -2,7 +2,6 @@
 import pytest
 
 from xuse.browser.errors import BrowserActionError
-from xuse.browser.messaging import conversation_url
 from test_messaging_dom import app, native_browser  # noqa: F401
 
 
@@ -95,14 +94,6 @@ async def test_observed_native_unread_selection_is_used_without_opening_chat(app
     assert result["filter_application"] == "native_unread_selection"
     assert await app.page.locator('[data-testid="dm-inbox-dropdown-trigger"]').inner_text() == "Unread"
     assert await app.page.locator("html").get_attribute("data-row-clicks") == "0"
-
-
-async def test_folder_routes_are_not_conversation_ids():
-    for route in ("/i/chat/requests", "/i/chat/requests/other", "/i/chat/requests/invalid"):
-        with pytest.raises(ValueError):
-            conversation_url("https://x.com" + route)
-    for route in ("/i/chat/requests/10-20", "/i/chat/requests/other/10-20"):
-        assert conversation_url("https://x.com" + route) == ("https://x.com" + route, "10-20")
 
 
 @pytest.mark.parametrize("folder", ["requests", "other"])

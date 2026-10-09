@@ -428,8 +428,8 @@ async def test_native_intercepted_thread_with_reply_media(thread_server, tmp_pat
     try:
         api = importlib.import_module(f"{driver}.async_api")
     except ModuleNotFoundError:
-        if driver == "patchright" and os.environ.get("XUSE_REQUIRE_BROWSER_TESTS") == "1":
-            pytest.fail("Required primary thread-test driver is unavailable.", pytrace=False)
+        if os.environ.get("XUSE_REQUIRE_BROWSER_TESTS") == "1":
+            pytest.fail("Required thread-test driver is unavailable.", pytrace=False)
         pytest.skip(f"Optional {driver} driver is unavailable for offline DOM scenarios.")
     channel = os.environ.get("XUSE_TEST_BROWSER_CHANNEL", "chrome")
     if channel not in {"chrome", "msedge", "chromium"}:

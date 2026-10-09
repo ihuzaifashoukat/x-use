@@ -201,29 +201,10 @@ async def test_submission_confirmation_requires_new_exact_text_and_known_own_aut
         await browser._observe_submission(set(), "Reviewed message", "post")
 
 
-@pytest.mark.asyncio
-async def test_real_dom_fixture_preserves_primary_permalink_and_ignores_quoted_text():
-    api = pytest.importorskip("playwright.async_api")
-    async with api.async_playwright() as runtime:
-        try:
-            chromium = await runtime.chromium.launch(channel="chrome", headless=True)
-        except Exception:
-            pytest.skip("Local Chrome runtime is unavailable for the offline DOM fixture.")
-        try:
-            page = await chromium.new_page()
-            await page.route("**/*", lambda route: route.abort())
-            await page.set_content('''<article data-testid="tweet">
-              <div data-testid="User-Name"><span>Person</span><span>@person</span></div>
-              <a href="/person/status/1234"><time datetime="2026-10-08T12:00:00Z">Today</time></a>
-              <div data-testid="tweetText">Original text</div>
-              <div role="link"><a href="/quoted/status/123"><time>Yesterday</time></a>
-                <div data-testid="tweetText">Quoted text</div></div>
-              <button data-testid="like">1.2K</button>
-              <a href="/person/status/1234/analytics">42</a>
-            </article>''')
-            snapshots = await XBrowser(page)._snapshots()
-            tweet = tweet_from_snapshot(snapshots[0])
-            assert tweet.tweet_id == "1234" and tweet.text_content == "Original text"
-            assert tweet.like_count == 1200 and tweet.view_count == 42
-        finally:
-            await chromium.close()
+def test_snapshot_rejects_conflicting_permalink_author_and_handles_bad_media():
+    assert tweet_from_snapshot({"status_url": "/alice/status/123", "text": "Body", "handle": "@bob"}) is None
+    result = tweet_from_snapshot({"status_url": "/alice/status/123", "text": "Body", "media": [
+        {"type": "image", "url": "https://[broken"},
+        {"type": "image", "url": "https://x.com/valid.jpg"},
+    ]})
+    assert [str(item.url) for item in result.media] == ["https://x.com/valid.jpg"]

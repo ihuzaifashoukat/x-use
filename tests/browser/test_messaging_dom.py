@@ -36,8 +36,8 @@ async def native_browser(request):
     try:
         api = importlib.import_module(f"{driver}.async_api")
     except ModuleNotFoundError:
-        if driver == "patchright" and os.environ.get("XUSE_REQUIRE_BROWSER_TESTS") == "1":
-            pytest.fail("Required primary inbox-test driver is unavailable.", pytrace=False)
+        if os.environ.get("XUSE_REQUIRE_BROWSER_TESTS") == "1":
+            pytest.fail("Required inbox-test driver is unavailable.", pytrace=False)
         pytest.skip(f"Optional {driver} driver is unavailable for offline DOM scenarios.")
     channel = os.environ.get("XUSE_TEST_BROWSER_CHANNEL", "chrome")
     if channel not in {"chrome", "msedge", "chromium"}:

@@ -8,6 +8,14 @@ from xuse.browser.errors import BrowserActionError, BrowserBlocked
 from xuse.browser.messaging import MessagingMixin, conversation_url, normalize_recipient
 
 
+def test_folder_routes_are_not_conversation_ids():
+    for route in ("/i/chat/requests", "/i/chat/requests/other", "/i/chat/requests/invalid"):
+        with pytest.raises(ValueError):
+            conversation_url("https://x.com" + route)
+    for route in ("/i/chat/requests/10-20", "/i/chat/requests/other/10-20"):
+        assert conversation_url("https://x.com" + route) == ("https://x.com" + route, "10-20")
+
+
 class Locator:
     def __init__(self, nodes=()):
         self.nodes = list(nodes)

@@ -70,7 +70,15 @@ jobs:
       - name: Validate installer manifests and rendered MCP configuration
         run: python -m pytest -q tests/test_install_manifests.py tests/test_setup_uv.py
       - name: Run offline tests
-        run: python -m pytest -q -m 'not smoke' --junitxml=test-results/unit.xml
+        # Native browsers are required against the clean wheel below. Keep
+        # synthetic OS process-identity tests in every source/Python job.
+        run: >-
+          python -m pytest -q -m 'not smoke'
+          --ignore-glob='tests/browser/*_dom.py'
+          --ignore=tests/browser/test_network_privacy.py
+          --deselect=tests/browser/test_session_process_cleanup.py::test_native_synthetic_cleanup_drains_owned_processes
+          --deselect=tests/mcp/test_thread_tools.py::test_native_intercepted_thread_with_reply_media
+          --junitxml=test-results/unit.xml
       - name: Build and validate wheel and source distribution
         run: |
           python -m build
@@ -103,10 +111,14 @@ jobs:
       # browser profiles or reuse mismatched binaries across dependency updates.
       - name: Install official Chromium and Linux libraries
         if: matrix.python-version == '3.12' && runner.os == 'Linux'
-        run: '"$WHEEL_PYTHON" -m patchright install --with-deps chromium'
+        run: |
+          "$WHEEL_PYTHON" -m patchright install --with-deps chromium
+          "$WHEEL_PYTHON" -m playwright install chromium
       - name: Install official Chromium on macOS or Windows
         if: matrix.python-version == '3.12' && runner.os != 'Linux'
-        run: '"$WHEEL_PYTHON" -m patchright install chromium'
+        run: |
+          "$WHEEL_PYTHON" -m patchright install chromium
+          "$WHEEL_PYTHON" -m playwright install chromium
       - name: Run synthetic DOM browser smoke without external network
         if: matrix.python-version == '3.12'
         run: >-
@@ -118,7 +130,9 @@ jobs:
         if: matrix.python-version == '3.12'
         env:
           XUSE_TEST_BROWSER_CHANNEL: chromium
-          XUSE_TEST_BROWSER_DRIVER: patchright
+          XUSE_TEST_BROWSER_DRIVERS: patchright,playwright
+          # Both spellings agree: native cleanup prefers the singular key.
+          XUSE_TEST_BROWSER_DRIVER: patchright,playwright
           XUSE_REQUIRE_BROWSER_TESTS: '1'
         run: >-
           "$WHEEL_PYTHON" -m pytest -q
