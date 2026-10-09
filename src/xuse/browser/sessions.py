@@ -602,19 +602,32 @@ class PlaywrightSessionPool:
                 start_task = asyncio.create_task(self._cold_start(account_id))
                 self._start_tasks.add(start_task)
                 try:
-                    entry = await asyncio.wait_for(start_task, self.cold_start_timeout_seconds)
-                except asyncio.CancelledError:
-                    # Cancellation can arrive after cold start succeeded but
-                    # before wait_for hands its entry back to this caller. The
-                    # completed entry is not yet tracked in _entries, so close
-                    # it explicitly rather than losing its context and owner.
-                    if start_task.done() and not start_task.cancelled():
+                    # wait_for on Python 3.10 can swallow caller cancellation
+                    # when startup finishes in the same loop turn. wait keeps
+                    # cancellation distinct from task completion.
+                    done, _ = await asyncio.wait({start_task}, timeout=self.cold_start_timeout_seconds)
+                    if not done:
+                        start_task.cancel()
                         try:
-                            abandoned = start_task.result()
-                        except Exception:
+                            abandoned = await start_task
+                        except (asyncio.CancelledError, Exception):
                             pass
                         else:
                             await self._cleanup(abandoned.context, abandoned.owner_lock)
+                        raise SessionError("startup_timeout")
+                    entry = start_task.result()
+                except asyncio.CancelledError:
+                    # Cancellation can arrive after cold start succeeded but
+                    # before wait hands its entry back to this caller. The
+                    # completed entry is not yet tracked in _entries, so close
+                    # it explicitly rather than losing its context and owner.
+                    start_task.cancel()
+                    try:
+                        abandoned = await start_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                    else:
+                        await self._cleanup(abandoned.context, abandoned.owner_lock)
                     raise
                 except asyncio.TimeoutError:
                     raise SessionError("startup_timeout") from None

@@ -5,6 +5,7 @@ the real repo config/, data/, or logs/ directories.
 """
 
 import json
+import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -18,6 +19,39 @@ def write_json(path: Path, data: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return path
+
+
+@pytest.fixture(autouse=True)
+def isolate_mcp_state(tmp_path, monkeypatch):
+    """Give default MCP stores and account paths a private per-test home.
+
+    Injecting a draft/queue store does not cover newly added stores, whose
+    defaults would otherwise write into the checkout. Keep tested settings
+    intact, and let explicit monkeypatches in individual tests take precedence.
+    """
+    from xuse.core import config_loader
+    from xuse.core.local_state import private_state_file
+
+    home = tmp_path.resolve() / "mcp-home"
+    private_state_file(home / ".bootstrap")
+    config = home / "config"
+    write_json(config / "settings.json", {})
+    write_json(config / "accounts.json", [])
+    monkeypatch.setattr(config_loader, "PROJECT_ROOT", home)
+    monkeypatch.setattr(config_loader, "CONFIG_DIR", config)
+    monkeypatch.setattr(config_loader, "DEFAULT_SETTINGS_FILE", config / "settings.json")
+    monkeypatch.setattr(config_loader, "DEFAULT_ACCOUNTS_FILE", config / "accounts.json")
+    # Python binds default arguments when the class is defined, independently
+    # of the constants above. Default ConfigLoader() must also stay isolated.
+    monkeypatch.setattr(ConfigLoader.__init__, "__defaults__",
+                        (config / "settings.json", config / "accounts.json"))
+    for name, module in tuple(sys.modules.items()):
+        if name.startswith("xuse.mcp.") and module is not None:
+            if hasattr(module, "PROJECT_ROOT"):
+                monkeypatch.setattr(module, "PROJECT_ROOT", home)
+            if hasattr(module, "CONFIG_DIR"):
+                monkeypatch.setattr(module, "CONFIG_DIR", config)
+    return home
 
 
 @pytest.fixture

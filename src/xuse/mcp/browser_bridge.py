@@ -67,13 +67,31 @@ async def browser_call(ctx, account, operation, *args, kind="read", action_conte
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
         raise ToolError("mcp.tool_timeout_seconds must be a finite positive number.")
     async def run():
+        failure = None
+
+        async def operation_task():
+            nonlocal failure
+            try:
+                return await _browser_call_locked(ctx, account, operation, *args, kind=kind,
+                    action_context=action_context, recipient_validator=recipient_validator,
+                    recovery_read=recovery_read, **kwargs)
+            except BaseException as exc:
+                # Python 3.10 can replace a task's CancelledError at an await
+                # boundary. Keep the original ledger reference independently.
+                failure = exc
+                raise
+
         try:
-            return await asyncio.wait_for(_browser_call_locked(ctx, account, operation, *args, kind=kind,
-                action_context=action_context, recipient_validator=recipient_validator, recovery_read=recovery_read, **kwargs), timeout)
+            return await asyncio.wait_for(operation_task(), timeout)
+        except asyncio.CancelledError as exc:
+            action_id = getattr(failure, "action_id", None)
+            if action_id:
+                exc.action_id = action_id
+            raise
         except asyncio.TimeoutError as exc:
             error = ToolError("Browser operation timed out. Inspect get_account_safety before retrying a write.")
             error.reason = "tool_timeout"
-            error.action_id = getattr(exc.__cause__, "action_id", None)
+            error.action_id = getattr(failure, "action_id", None) or getattr(exc.__cause__, "action_id", None)
             raise error from None
     if ctx.safety_store is None:
         return await run()

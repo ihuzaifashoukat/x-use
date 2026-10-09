@@ -5,6 +5,7 @@ import os
 
 import pytest
 
+from xuse.browser.errors import SessionError
 from xuse.browser.sessions import PatchrightSessionPool, PlaywrightSessionPool
 
 
@@ -69,7 +70,14 @@ async def test_managed_browser_blocks_udp_with_a_working_native_baseline(driver,
                 await baseline.close()
         assert counter.count > 0, "The local UDP baseline must work to prove containment."
         counter.count = 0
-        protected = await pool._get_browser()
+        try:
+            protected = await pool._get_browser()
+        except SessionError as error:
+            # This loopback-only launch has no accounts or credentials. Expose
+            # the raw startup cause here while production keeps it private.
+            if error.__context__ is not None:
+                raise error.__context__ from error
+            raise
         await gather(protected, port)
         assert counter.count == 0, "Managed browser sent UDP outside the configured HTTP route."
     finally:

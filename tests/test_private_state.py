@@ -1,5 +1,6 @@
 """Private state permissions, link refusal and real Windows DACL checks."""
 import os
+import ctypes
 import stat
 import sqlite3
 import subprocess
@@ -22,6 +23,29 @@ def _windows_sddl(path):
          "(Get-Acl -LiteralPath $env:XUSE_TEST_ACL_PATH).Sddl"],
         text=True, env=environment,
     ).strip()
+
+
+def _windows_dacl_trustee_sids(sddl):
+    """Ask Windows to resolve aliases such as LA to their exact SID."""
+    from ctypes import wintypes
+    from xuse.core.windows_permissions import _Api
+
+    api = _Api()
+    descriptor = api.descriptor(sddl)
+    try:
+        acl = ctypes.c_void_p()
+        present, defaulted = wintypes.BOOL(), wintypes.BOOL()
+        api.check(api.security.GetSecurityDescriptorDacl(
+            descriptor, ctypes.byref(present), ctypes.byref(acl), ctypes.byref(defaulted)))
+        assert present.value and acl.value
+        trustees = set()
+        for entry in api.acl_entries(acl):
+            assert entry[0] == 0  # Ordinary ACCESS_ALLOWED_ACE, SID starts at byte 8.
+            buffer = ctypes.create_string_buffer(entry)
+            trustees.add(api.sid_string(ctypes.byref(buffer, 8)))
+        return trustees
+    finally:
+        api.kernel.LocalFree(descriptor)
 
 
 def test_windows_acl_helper_does_not_inherit_another_powershell_module_path(tmp_path, monkeypatch):
@@ -186,7 +210,8 @@ def test_windows_new_and_permissive_existing_file_have_only_expected_acl(tmp_pat
         actual = sddl(path)
         dacl = actual.split("D:", 1)[1].split("S:", 1)[0]
         assert dacl.startswith("P")
-        assert set(__import__("re").findall(r"\(A;;FA;;;([^;()]+)\)", dacl)) == {sid, "SY", "BA"}
+        assert len(__import__("re").findall(r"\(A;;FA;;;([^;()]+)\)", dacl)) == 3
+        assert _windows_dacl_trustee_sids(actual) == {sid, "S-1-5-18", "S-1-5-32-544"}
         assert dacl.count("(") == 3
     assert existing.read_text(encoding="utf-8") == "outside sentinel"
     assert sddl(parent) == parent_before
@@ -286,9 +311,10 @@ def test_windows_sqlite_new_private_directory_keeps_wal_and_shm_private(tmp_path
             sidecar = path.with_name(path.name + suffix)
             assert sidecar.exists()
             verify_private_sqlite_path(sidecar, directory=False)
-            dacl = _windows_sddl(sidecar).split("D:", 1)[1].split("S:", 1)[0]
-            trustees = set(__import__("re").findall(r"\(A;[^;]*;[^;]*;;;([^;()]+)\)", dacl))
-            assert trustees == {sid, "SY", "BA"}
+            actual = _windows_sddl(sidecar)
+            dacl = actual.split("D:", 1)[1].split("S:", 1)[0]
+            assert len(__import__("re").findall(r"\(A;[^;]*;[^;]*;;;([^;()]+)\)", dacl)) == 3
+            assert _windows_dacl_trustee_sids(actual) == {sid, "S-1-5-18", "S-1-5-32-544"}
         private_sqlite_file(path)
         assert second.execute("SELECT value FROM records").fetchone() == ("synthetic",)
         assert _windows_sddl(parent) == before

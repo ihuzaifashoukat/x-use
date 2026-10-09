@@ -224,10 +224,17 @@ async def browser_check(artifacts: Path | None, channel: str | None, driver: str
 async def run(args, report):
     report["stage"] = "installed_package"
     with tempfile.TemporaryDirectory(prefix="xuse-ci-empty-") as temporary:
-        directory = Path(temporary)
+        # macOS exposes its temp tree through /var -> /private/var. Resolve
+        # this OS alias before handing paths to the strict private-state
+        # checks, which correctly reject symlink ancestors in supplied paths.
+        directory = Path(temporary).resolve()
         previous = Path.cwd()
+        previous_home = os.environ.get("X_USE_HOME")
         try:
             os.chdir(directory)
+            # Editable imports can otherwise anchor defaults to the checkout,
+            # and inherited X_USE_HOME can point at real account material.
+            os.environ["X_USE_HOME"] = str(directory)
             report["package"] = installed_package_check(args.expect_installed, args.driver)
             if args.mode in ("package", "all"):
                 # The OS temp directory may grant other users access. Keep
@@ -237,6 +244,7 @@ async def run(args, report):
                 directory = directory / "private-fixture"
                 private_state_file(directory / ".bootstrap")
                 os.chdir(directory)
+                os.environ["X_USE_HOME"] = str(directory)
                 report["stage"] = "mcp_protocol"
                 report["mcp"] = await asyncio.wait_for(package_protocol_check(directory, args.expect_installed, args.driver), timeout=45)
             if args.mode in ("browser", "all"):
@@ -244,6 +252,10 @@ async def run(args, report):
                 report["browser"] = await asyncio.wait_for(browser_check(args.artifacts, args.channel, args.driver), timeout=60)
         finally:
             os.chdir(previous)
+            if previous_home is None:
+                os.environ.pop("X_USE_HOME", None)
+            else:
+                os.environ["X_USE_HOME"] = previous_home
     report["status"] = "passed"
     report.pop("stage", None)
 
