@@ -199,5 +199,10 @@ docs/superpowers/
 data/drafts.jsonl
 data/engagement_queue.jsonl
 data/proxy_pools_state.json
+data/browser_sessions/
+data/dev/
+data/*.sqlite3
+data/*.sqlite3-*
+data/live-smoke*.json
 data/metrics/*.json
 !data/metrics/tech_innovator_001.json

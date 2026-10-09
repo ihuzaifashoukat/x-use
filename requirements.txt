@@ -1,10 +1,2 @@
-selenium
-webdriver-manager
-fake-headers
-pydantic
-langchain-google-genai
-openai
-requests
-python-dotenv
-undetected-chromedriver
-selenium-stealth
+# Keep the package metadata as the single runtime dependency source.
+-e .

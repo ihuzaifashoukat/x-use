@@ -174,6 +174,8 @@ class MediaItem(BaseModel):
     type: Literal["image", "video"]
     url: HttpUrl
     alt_text: Optional[str] = None
+    poster_url: Optional[HttpUrl] = None
+    source_url: Optional[HttpUrl] = None
 
 
 class ScrapedTweet(BaseModel):
