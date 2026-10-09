@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from xuse.mcp.media import images_for_tweet, media_envelope, with_images
+from xuse.mcp.media import image_fetch_scope, images_for_tweet, media_envelope, with_images
 from xuse.orchestrator import TwitterOrchestrator
 from xuse.pipelines import PIPELINE_FLAGS as _PIPELINE_FLAGS
 
@@ -21,6 +21,7 @@ from . import actions, executor as ex
 from .executor import Ctx, ToolError
 from .tools import draft_response, guard, ok_, scrape_single_tweet
 from .annotations import PUBLISHES_TO_X, READ_ONLY_FROM_X
+from .browser_bridge import uses_playwright
 
 logger = logging.getLogger(__name__)
 
@@ -82,11 +83,14 @@ def register_write_tools(server, ctx: Ctx) -> None:
 
     @server.tool(annotations=PUBLISHES_TO_X)
     @guard
-    async def reply_to_tweet(account: str, tweet_url: str, text: str = "auto") -> Dict[str, Any]:
+    async def reply_to_tweet(account: str, tweet_url: str, text: str = "auto",
+                             media: Optional[List[str]] = None) -> Dict[str, Any]:
         """Reply to a tweet. Pass explicit `text`, or "auto" to generate the
         reply with the LLM from the tweet's actual content (a read-only fetch
         is performed so the draft shows the real reply text). In draft mode
-        (default) nothing is posted until approve_draft(draft_id)."""
+        (default) nothing is posted until approve_draft(draft_id). media accepts
+        local attachments on the async browser backend. For conversation-wide
+        context, read get_thread before supplying explicit reply text."""
         account_id, _, _ = ex.resolve_account(ctx, account)
         tweet_id = ex.tweet_id_from_url(tweet_url)
         if not tweet_id:
@@ -109,11 +113,14 @@ def register_write_tools(server, ctx: Ctx) -> None:
                     "tweet_id": tweet_id,
                     "text": reply_text,
                     "text_content": text_content,
+                    **({"media": list(media)} if media else {}),
                 },
-                preview=f"Reply as @{account_id} to {tweet_url}: \"{reply_text}\"",
+                preview=f"Reply as @{account_id} to {tweet_url}: \"{reply_text}\""
+                        + (f" (+{len(media)} media file(s))" if media else ""),
             )
             return draft_response(draft)
-        result = await actions.exec_reply(ctx, account_id, tweet_url, reply_text, tweet_id, text_content)
+        options = {"media": media} if media else {}
+        result = await actions.exec_reply(ctx, account_id, tweet_url, reply_text, tweet_id, text_content, **options)
         return ok_(**result)
 
     @server.tool(annotations=READ_ONLY_FROM_X)
@@ -145,7 +152,9 @@ def register_write_tools(server, ctx: Ctx) -> None:
         )
         if not include_images:
             return envelope
-        images = await asyncio.to_thread(images_for_tweet, original)
+        with image_fetch_scope(ctx, account_id) as transport:
+            envelope["media_transport"] = transport
+            images = await asyncio.to_thread(images_for_tweet, original)
         return with_images(envelope, images)
 
     @server.tool(annotations=PUBLISHES_TO_X)
@@ -159,6 +168,8 @@ def register_write_tools(server, ctx: Ctx) -> None:
         (mapped onto the account's ActionConfig enable flags for this run
         only, config files are never mutated; same names as the CLI's
         `x-use run --pipeline`). Draft mode does not apply to batch cycles."""
+        if uses_playwright(ctx):
+            raise ToolError("run_cycle is a legacy Selenium batch tool. Use search, draft and queue tools with the async browser runtime.")
         raw_accounts = ctx.config_loader.get_accounts_config()
         targets: List[Dict[str, Any]] = []
         for raw in raw_accounts:

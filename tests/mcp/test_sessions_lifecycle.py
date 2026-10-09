@@ -13,7 +13,7 @@ import threading
 
 import pytest
 
-from xuse.mcp.sessions import SessionPool
+from xuse.mcp.sessions import SessionError, SessionPool
 
 from helpers import (  # noqa: F401 — imported fixtures register for this module
     FakeBrowserManager,
@@ -84,3 +84,36 @@ async def test_close_cancelled_while_waiting_keeps_session_tracked(session_pool,
     assert manager.closed is True
     assert session_pool.entry_for("acc1") is None
     await session_pool.close_all()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_during_cold_start_closes_returned_browser(config_loader):
+    started, release = threading.Event(), threading.Event()
+    managers = []
+
+    class HeldBrowser(FakeBrowserManager):
+        def get_driver(self):
+            started.set()
+            assert release.wait(5)
+            return super().get_driver()
+
+    def factory(account):
+        manager = HeldBrowser()
+        managers.append(manager)
+        return manager
+
+    pool = SessionPool(config_loader, browser_factory=factory)
+    first = asyncio.create_task(pool.acquire("acc1"))
+    try:
+        assert await asyncio.to_thread(started.wait, 2)
+        # A second waiter passed the initial closed check before shutdown.
+        second = asyncio.create_task(pool.acquire("acc2"))
+        await asyncio.sleep(0)
+        await pool.close_all()
+    finally:
+        release.set()
+    for task in (first, second):
+        with pytest.raises(SessionError, match="closed"):
+            await asyncio.wait_for(task, 2)
+    assert len(managers) == 1 and managers[0].closed
+    assert list(pool.active_accounts) == []

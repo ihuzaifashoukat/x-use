@@ -112,10 +112,11 @@ async def test_pending_drafts_resource_shows_only_pending(mcp_server, draft_stor
     "xuse://accounts/has.dot",
 ])
 async def test_bad_account_uris_error_without_killing_the_server(mcp_server, uri):
+    expected_tools = {tool.name for tool in await mcp_server.list_tools()}
     with pytest.raises(Exception):
         await read(mcp_server, uri)
     # The contract that matters: the server keeps serving afterwards.
-    assert len(await mcp_server.list_tools()) == 33
+    assert {tool.name for tool in await mcp_server.list_tools()} == expected_tools
     assert json.loads(await read(mcp_server, "xuse://accounts"))["count"] == 2
 
 

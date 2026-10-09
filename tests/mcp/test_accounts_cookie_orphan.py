@@ -28,8 +28,8 @@ from helpers import (  # noqa: F401 — imported fixtures register for this modu
 )
 
 VALID_COOKIES = [
-    {"name": "auth_token", "value": "secret-token"},
-    {"name": "ct0", "value": "secret-csrf"},
+    {"name": "auth_token", "value": "secret-token", "domain": ".x.com", "path": "/", "secure": True},
+    {"name": "ct0", "value": "secret-csrf", "domain": ".x.com", "path": "/", "secure": True},
 ]
 
 

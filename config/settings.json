@@ -100,6 +100,34 @@
     "proxy_pool_strategy": "hash",
     "proxy_pool_state_file": "data/proxy_pools_state.json"
   },
+  "mcp": {
+    "browser_backend": "patchright",
+    "browser_headless": true,
+    "browser_channel": null,
+    "max_browser_sessions": 4,
+    "draft_mode": true,
+    "session_idle_timeout_seconds": 600,
+    "cold_start_timeout_seconds": 180,
+    "tool_timeout_seconds": 180,
+    "messaging_timeout_seconds": 60,
+    "safety_file": "data/action_safety.sqlite3",
+    "outreach_file": "data/outreach.sqlite3",
+    "safety": {
+      "read_interval_seconds": 2,
+      "write_interval_seconds": 90,
+      "max_actions_per_minute": 6,
+      "daily_caps": {
+        "read": 300,
+        "post": 5,
+        "reply": 15,
+        "like": 30,
+        "retweet": 10,
+        "message": 10,
+        "follow": 10,
+        "unlock": 5
+      }
+    }
+  },
   "llm": {
     "api_key": "",
     "base_url": "",

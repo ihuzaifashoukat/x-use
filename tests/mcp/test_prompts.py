@@ -17,6 +17,8 @@ EXPECTED = {
     "review_and_publish": {"account"},
     "daily_check": {"account"},
     "setup_account": set(),
+    "outreach_message": {"account", "profile"},
+    "thread_workflow": {"account", "tweet_url"},
 }
 
 # Every tool name a prompt is allowed to mention. Anything else is either a
@@ -30,6 +32,9 @@ REAL_TOOLS = {
     "process_queue", "research_and_stage", "draft_post_variations", "add_account",
     "update_account", "set_account_active", "remove_account", "add_proxy",
     "remove_proxy", "test_proxy",
+    "get_account_safety", "get_profile_context", "get_profile_posts", "get_profile_connections",
+    "prepare_outreach", "get_inbox", "get_conversation", "resolve_action_outcome",
+    "get_thread", "prepare_thread", "get_thread_run", "continue_thread",
 }
 
 
@@ -85,7 +90,7 @@ async def test_publishing_prompt_states_the_approval_rule(mcp_server):
     # Must not tell a client to loop approvals.
     assert "Never loop over the whole list" in body
     # Must say the post URL is not returned, or agents invent one.
-    assert "approve_draft returns no post URL" in body
+    assert "result.evidence" in body and "Legacy results may omit it" in body
 
 
 @pytest.mark.asyncio

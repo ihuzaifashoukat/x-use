@@ -17,7 +17,10 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from xuse.core.config_loader import CONFIG_DIR, PROJECT_ROOT
 from xuse.core.config_writer import AccountsConfigWriter, ConfigWriteError
+from xuse.core.local_state import private_state_file
 from xuse.doctor import check_cookie_data
+from xuse.browser.cookies import MAX_COOKIE_FILE_BYTES, normalize_cookies
+from xuse.browser.errors import SessionError
 
 from . import executor as ex
 from .executor import Ctx, ToolError
@@ -79,22 +82,32 @@ def _import_cookies(account_id: str, cookie_file: str) -> Tuple[str, Optional[_C
     if not src.is_file():
         raise ToolError(f"Cookie file not found: {cookie_file}")
     try:
-        data = json.loads(src.read_text(encoding="utf-8"))
-    except Exception as e:
-        raise ToolError(f"Cookie file is not valid JSON: {e}") from e
+        with src.open("rb") as stream:
+            contents = stream.read(MAX_COOKIE_FILE_BYTES + 1)
+        if len(contents) > MAX_COOKIE_FILE_BYTES:
+            raise ValueError()
+        data = json.loads(contents.decode("utf-8-sig"))
+    except (OSError, ValueError, UnicodeError):
+        raise ToolError("Cookie file is not valid JSON or exceeds the import size limit.") from None
     valid, problems = check_cookie_data(data)
     if not valid:
         raise ToolError("Cookie file failed validation: " + "; ".join(problems))
+    try:
+        normalize_cookies(data)
+    except SessionError:
+        raise ToolError("Cookie file failed validation: export secure, unexpired x.com cookies including auth_token and ct0.") from None
     dest = CONFIG_DIR / f"{account_id}_cookies.json"
     if src.resolve() == dest.resolve():
         # The export already sits at the convention path (e.g. the user named
         # it config/<account_id>_cookies.json) — copying it onto itself raises
         # SameFileError; validate and use it in place instead.
+        private_state_file(dest)
         logger.info("Cookie file for account '%s' already at %s; using in place.", account_id, dest)
         return f"config/{account_id}_cookies.json", None
-    dest.parent.mkdir(parents=True, exist_ok=True)
     backup: Optional[Path] = None
-    if dest.exists():
+    existed = dest.exists()
+    private_state_file(dest)
+    if existed:
         # dest is this account's LIVE cookie file and copyfile is about to
         # clobber it. If the config mutation then fails, rolling back by
         # deleting dest would destroy a working login that is not backed up
@@ -104,8 +117,10 @@ def _import_cookies(account_id: str, cookie_file: str) -> Tuple[str, Optional[_C
                                         suffix=".bak")
         os.close(fd)
         backup = Path(tmp_name)
-        shutil.copy2(dest, backup)
-    shutil.copyfile(src, dest)
+        private_state_file(backup)
+        shutil.copyfile(dest, backup)
+    # Persist the exact validated input, never reopen a mutable source path.
+    dest.write_bytes(contents)
     logger.info("Imported cookies for account '%s' to %s.", account_id, dest)
     return f"config/{account_id}_cookies.json", _CookieRollback(dest, backup)
 
@@ -249,6 +264,9 @@ def register_account_tools(server, ctx: Ctx) -> None:
                     raw["action_config"] = dict(action_config)
                 if cookie_rel:
                     raw["cookie_file_path"] = cookie_rel
+                    # Inline credentials take precedence during browser startup.
+                    # An explicit file refresh must replace that older source.
+                    raw.pop("cookies", None)
             return accounts
 
         try:

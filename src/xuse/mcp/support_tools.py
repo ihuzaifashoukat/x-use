@@ -2,6 +2,7 @@
 get_account_health. All read-only except reject_draft, which is a local
 status flip — nothing touches X."""
 import json
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -15,10 +16,11 @@ from . import executor as ex
 from .executor import Ctx, ToolError
 from .tools import guard, ok_
 from .annotations import LOCAL_WRITE_IDEMPOTENT, READ_ONLY_LOCAL
+from .local_reads import MAX_COOKIE_BYTES, read_json
 
 logger = logging.getLogger(__name__)
 
-_DRAFT_STATUSES = ("pending", "approved", "executed", "failed", "rejected")
+_DRAFT_STATUSES = ("pending", "approved", "partial", "executed", "failed", "rejected", "uncertain")
 _SAFE_ACCOUNT_ID = re.compile(r"[A-Za-z0-9_-]+")
 
 
@@ -30,7 +32,7 @@ def register_support_tools(server, ctx: Ctx) -> None:
     async def list_drafts(status: Optional[str] = None, account: Optional[str] = None,
                           limit: int = 20) -> Dict[str, Any]:
         """List drafts, newest first. `status` filters to one of
-        pending/approved/executed/failed/rejected; `account` filters by
+        pending/approved/partial/executed/failed/rejected/uncertain; `account` filters by
         account id; `limit` caps the response (max 100). Read-only."""
         if status is not None and status not in _DRAFT_STATUSES:
             raise ToolError(
@@ -67,7 +69,21 @@ def register_support_tools(server, ctx: Ctx) -> None:
             raise ToolError(
                 f"Draft '{draft_id}' is already {draft.status}, "
                 "only pending drafts can be rejected.")
-        ctx.draft_store.set_status(draft_id, "rejected")
+        if draft.action == "publish_thread":
+            from .thread_tools import _store
+            store = _store(ctx)
+            run_id = draft.payload.get("run_id")
+            with store.execution_lock(run_id):
+                run = store.validate_draft(run_id, draft)
+                if run["state"] == "complete":
+                    raise ToolError("A completed thread cannot be rejected.")
+                # A blocked pending draft can retain prior authorization.
+                # Revoke it durably under the same lock used by continuation;
+                # an active run must finish before rejection can be accepted.
+                store.cancel(run_id)
+                ctx.draft_store.set_status(draft_id, "rejected")
+        else:
+            ctx.draft_store.set_status(draft_id, "rejected")
         return ok_(draft_id=draft_id, status="rejected")
 
     @server.tool(annotations=READ_ONLY_LOCAL)
@@ -121,13 +137,13 @@ def register_support_tools(server, ctx: Ctx) -> None:
                 cookie_path = PROJECT_ROOT / raw["cookie_file_path"]
             if cookie_path.is_file():
                 try:
-                    data = json.loads(cookie_path.read_text(encoding="utf-8"))
+                    data = await asyncio.to_thread(read_json, cookie_path, max_bytes=MAX_COOKIE_BYTES)
                     valid, problems = check_cookie_data(data)
                     cookies_info = {"configured": True, "file": raw["cookie_file_path"],
                                     "valid": valid, "problems": problems}
                 except Exception as e:
                     cookies_info = {"configured": True, "file": raw["cookie_file_path"],
-                                    "valid": False, "problems": [f"unreadable: {e}"]}
+                                    "valid": False, "problems": [f"unreadable: {ex.sanitize_text(e)}"]}
             else:
                 cookies_info = {"configured": True, "file": raw["cookie_file_path"],
                                 "valid": False, "problems": ["cookie file not found"]}
@@ -137,11 +153,13 @@ def register_support_tools(server, ctx: Ctx) -> None:
         summary_path = PROJECT_ROOT / "data" / "metrics" / f"{account_id}.json"
         if summary_path.exists():
             try:
-                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                summary = await asyncio.to_thread(read_json, summary_path)
+                if not isinstance(summary, dict):
+                    raise ValueError("Metrics must be an object.")
             except Exception:
                 summary = {"unreadable": True}
         entry = ctx.session_pool.entry_for(account_id)
-        queue_counts = ctx.queue_store.counts(account=account_id) if ctx.queue_store else {}
+        queue_counts = await asyncio.to_thread(ctx.queue_store.counts, account=account_id) if ctx.queue_store else {}
         pending_drafts = len([d for d in ctx.draft_store.list(status="pending")
                               if d.account == account_id])
         return ok_(account=account_id,

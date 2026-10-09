@@ -23,12 +23,26 @@ def read_disk(loader):
     return json.loads(Path(loader.accounts_file).read_text(encoding="utf-8"))
 
 
+@pytest.mark.asyncio
+async def test_cookie_refresh_replaces_older_inline_credentials(mcp_server, config_loader, cookie_export, isolated_config_dir):
+    rows = read_disk(config_loader)
+    account = rows[0]["account_id"]
+    rows[0]["cookies"] = [{"name": "auth_token", "value": "old-synthetic", "secure": True}]
+    Path(config_loader.accounts_file).write_text(json.dumps(rows), encoding="utf-8")
+    config_loader.accounts = rows
+    result = await call_tool(mcp_server, "update_account", {"account": account, "cookie_file": str(cookie_export)})
+    assert result["ok"]
+    updated = next(row for row in read_disk(config_loader) if row["account_id"] == account)
+    assert "cookies" not in updated
+    assert updated["cookie_file_path"] == f"config/{account}_cookies.json"
+
+
 @pytest.fixture
 def cookie_export(tmp_path):
     path = tmp_path / "cookies.json"
     path.write_text(json.dumps([
-        {"name": "auth_token", "value": "secret-token"},
-        {"name": "ct0", "value": "secret-csrf"},
+        {"name": "auth_token", "value": "secret-token", "secure": True},
+        {"name": "ct0", "value": "secret-csrf", "secure": True},
     ]), encoding="utf-8")
     return path
 
@@ -157,8 +171,8 @@ async def test_add_account_cookie_source_already_at_convention_path(
     place — shutil.copyfile onto itself raises SameFileError."""
     convention = isolated_config_dir / "acc3_cookies.json"
     convention.write_text(json.dumps([
-        {"name": "auth_token", "value": "secret-token"},
-        {"name": "ct0", "value": "secret-csrf"},
+        {"name": "auth_token", "value": "secret-token", "secure": True},
+        {"name": "ct0", "value": "secret-csrf", "secure": True},
     ]), encoding="utf-8")
     result = await call_tool(mcp_server, "add_account",
                              {"account_id": "acc3", "cookie_file": str(convention)})

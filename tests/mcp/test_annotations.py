@@ -2,8 +2,8 @@
 
 x-use's read-only vs write boundary used to live only in prose inside tool
 descriptions. Nothing could enforce it, and MCP directories that read
-annotations as the authoritative capability declaration saw a server with 33
-tools and no stated behaviour at all.
+annotations as the authoritative capability declaration saw tools with no
+stated behaviour at all.
 
 These tests pin the boundary. The lists below are the contract: moving a tool
 between them is a deliberate act that has to be written down here, which is
@@ -28,25 +28,35 @@ from helpers import (  # noqa: F401 - imported fixtures register for this module
 
 # Reads that never mutate anything, local or remote.
 READ_ONLY = {
-    "list_accounts", "get_account", "get_account_health", "get_metrics",
+    "get_thread", "get_thread_run",
+    "list_accounts", "get_account", "get_account_health", "get_metrics", "get_account_analytics",
     "list_drafts", "get_draft", "list_queue", "list_proxies", "get_run_status",
     "search_tweets", "search_profile", "get_tweet", "prepare_reply", "test_proxy",
+    "get_inbox", "get_conversation", "search_conversations", "get_profile",
+    "get_profile_context", "get_profile_posts", "get_profile_connections",
+    "get_home_feed", "get_notifications", "get_session_status", "get_account_safety",
+    "list_leads", "get_lead", "get_campaign", "list_campaigns", "get_campaign_summary",
 }
 
 # Reads and writes that cross the network: x.com through the browser, or the
 # configured LLM. A host cannot treat any of these as replayable.
 OPEN_WORLD = {
+    "get_account_analytics",
+    "get_thread", "continue_thread",
     "search_tweets", "search_profile", "get_tweet", "prepare_reply", "test_proxy",
     "approve_draft", "post_tweet", "generate_and_post", "reply_to_tweet",
     "engage", "process_queue", "run_cycle",
     "research_and_stage", "draft_post_variations",
+    "get_inbox", "get_conversation", "search_conversations", "get_profile",
+    "get_profile_context", "get_profile_posts", "get_profile_connections", "prepare_outreach",
+    "get_home_feed", "get_notifications", "resume_account_actions", "unlock_inbox",
 }
 
 # Tools that remove existing configuration, as opposed to adding to it.
 DESTRUCTIVE = {"remove_account", "remove_proxy"}
 
 # The only two tools that can turn stored intent into a public action on X.
-PUBLISH_GATES = {"approve_draft", "process_queue"}
+PUBLISH_GATES = {"approve_draft", "process_queue", "continue_thread"}
 
 
 async def _annotations(server):

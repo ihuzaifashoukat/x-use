@@ -1,5 +1,5 @@
 """MCP contract tests: the server exposes exactly the documented tools — the
-count is pinned by ``EXPECTED_TOOLS`` (currently 25, growing to 32 in v2.3) —
+count is pinned by ``EXPECTED_TOOLS`` —
 their schemas accept the documented parameters, and tool failures return
 structured error envelopes (``{"ok": false, "error": {...}}``) instead of
 raising through the server (NFR-1).
@@ -31,8 +31,14 @@ from helpers import (  # noqa: F401 — imported fixtures register for this modu
 
 # Every documented tool and the parameter names each must accept.
 EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
+    "get_thread": {"params": {"tweet_url", "account", "limit", "include_images"}, "required": {"tweet_url"}},
+    "prepare_thread": {"params": {"account", "posts", "reply_to"}, "required": {"account", "posts"}},
+    "get_thread_run": {"params": {"run_id"}, "required": {"run_id"}},
+    "continue_thread": {"params": {"run_id"}, "required": {"run_id"}},
+    "cancel_thread": {"params": {"run_id"}, "required": {"run_id"}},
     "list_accounts": {"params": set(), "required": set()},
     "get_metrics": {"params": {"account"}, "required": {"account"}},
+    "get_account_analytics": {"params": {"account", "limit"}, "required": {"account"}},
     "search_tweets": {"params": {"keywords", "limit", "account", "include_images"},
                       "required": {"keywords"}},
     "search_profile": {"params": {"profile", "limit", "account", "include_images"},
@@ -41,7 +47,7 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "approve_draft": {"params": {"draft_id"}, "required": {"draft_id"}},
     "post_tweet": {"params": {"account", "text", "media", "community"}, "required": {"account", "text"}},
     "generate_and_post": {"params": {"account", "topic"}, "required": {"account", "topic"}},
-    "reply_to_tweet": {"params": {"account", "tweet_url", "text"}, "required": {"account", "tweet_url"}},
+    "reply_to_tweet": {"params": {"account", "tweet_url", "text", "media"}, "required": {"account", "tweet_url"}},
     "prepare_reply": {"params": {"account", "tweet_url", "include_images"}, "required": {"account", "tweet_url"}},
     "engage": {"params": {"account", "keywords", "actions", "max_actions"}, "required": {"account", "keywords"}},
     "run_cycle": {"params": {"account", "pipelines"}, "required": set()},
@@ -49,7 +55,7 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
                    "required": {"account"}},
     "queue_engagement": {"params": {"account", "action", "tweet_url", "text"},
                          "required": {"account", "action", "tweet_url"}},
-    "list_queue": {"params": {"account", "status"}, "required": set()},
+    "list_queue": {"params": {"account", "status", "limit", "offset"}, "required": set()},
     "cancel_queued_action": {"params": {"queue_id"}, "required": {"queue_id"}},
     "process_queue": {"params": {"account", "max_actions"}, "required": set()},
     "get_account": {"params": {"account"}, "required": {"account"}},
@@ -73,12 +79,43 @@ EXPECTED_TOOLS: Dict[str, Dict[str, Any]] = {
     "add_proxy": {"params": {"pool", "proxy_url"}, "required": {"pool", "proxy_url"}},
     "remove_proxy": {"params": {"pool", "proxy_url", "confirm"}, "required": {"pool", "proxy_url"}},
     "test_proxy": {"params": {"account", "proxy_url"}, "required": set()},
+    "get_inbox": {"params": {"account", "limit", "inbox_filter", "unread_first", "folder"}, "required": {"account"}},
+    "get_conversation": {"params": {"account", "conversation_id", "limit", "before_message_id"}, "required": {"account", "conversation_id"}},
+    "search_conversations": {"params": {"account", "query", "limit", "inbox_filter", "unread_first", "folder"}, "required": {"account", "query"}},
+    "send_message": {"params": {"account", "recipient", "text"}, "required": {"account", "recipient", "text"}},
+    "follow_profile": {"params": {"account", "profile"}, "required": {"account", "profile"}},
+    "get_profile": {"params": {"account", "profile"}, "required": {"account", "profile"}},
+    "get_profile_context": {"params": {"account", "profile", "post_limit"}, "required": {"account", "profile"}},
+    "get_profile_posts": {"params": {"account", "profile", "feed", "limit"}, "required": {"account", "profile"}},
+    "get_profile_connections": {"params": {"account", "profile", "relationship", "limit"}, "required": {"account", "profile"}},
+    "prepare_outreach": {"params": {"account", "profile", "message_text", "post_limit"}, "required": {"account", "profile", "message_text"}},
+    "get_home_feed": {"params": {"account", "limit"}, "required": {"account"}},
+    "get_notifications": {"params": {"account", "limit", "view"}, "required": {"account"}},
+    "get_session_status": {"params": {"account"}, "required": set()},
+    "close_session": {"params": {"account"}, "required": {"account"}},
+    "get_account_safety": {"params": {"account"}, "required": {"account"}},
+    "pause_account_actions": {"params": {"account"}, "required": {"account"}},
+    "resume_account_actions": {"params": {"account"}, "required": {"account"}},
+    "resolve_action_outcome": {"params": {"account", "action_id", "observed_outcome"}, "required": {"account", "action_id", "observed_outcome"}},
+    "unlock_inbox": {"params": {"account", "pin_env_var"}, "required": {"account"}},
+    "upsert_lead": {"params": {"account", "handle", "display_name", "company", "notes", "tags", "status"}, "required": {"account", "handle"}},
+    "list_leads": {"params": {"account", "status", "tag", "limit", "offset"}, "required": {"account"}},
+    "get_lead": {"params": {"account", "lead_id"}, "required": {"account", "lead_id"}},
+    "update_lead_status": {"params": {"account", "lead_id", "status"}, "required": {"account", "lead_id", "status"}},
+    "opt_out_lead": {"params": {"account", "lead_id"}, "required": {"account", "lead_id"}},
+    "create_campaign": {"params": {"account", "name", "message_template"}, "required": {"account", "name", "message_template"}},
+    "get_campaign": {"params": {"account", "campaign_id", "limit", "offset"}, "required": {"account", "campaign_id"}},
+    "list_campaigns": {"params": {"account", "status", "limit", "offset"}, "required": {"account"}},
+    "add_campaign_leads": {"params": {"account", "campaign_id", "lead_ids"}, "required": {"account", "campaign_id", "lead_ids"}},
+    "set_campaign_status": {"params": {"account", "campaign_id", "status"}, "required": {"account", "campaign_id", "status"}},
+    "prepare_campaign_messages": {"params": {"account", "campaign_id", "max_messages"}, "required": {"account", "campaign_id"}},
+    "get_campaign_summary": {"params": {"account", "campaign_id"}, "required": {"account", "campaign_id"}},
 }
 
 
 @pytest.mark.asyncio
 async def test_server_registers_exactly_the_expected_tools(mcp_server):
-    """The tool count is pinned by EXPECTED_TOOLS (25 now, 32 at v2.3's end)."""
+    """The tool inventory is pinned by EXPECTED_TOOLS."""
     tools = await mcp_server.list_tools()
     assert {t.name for t in tools} == set(EXPECTED_TOOLS)
 

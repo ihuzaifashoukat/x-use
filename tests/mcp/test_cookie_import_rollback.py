@@ -26,12 +26,12 @@ from helpers import (  # noqa: F401 — imported fixtures register for this modu
 )
 
 LIVE = [
-    {"name": "auth_token", "value": "LIVE-SESSION", "domain": ".x.com", "path": "/"},
-    {"name": "ct0", "value": "LIVE-CSRF", "domain": ".x.com", "path": "/"},
+    {"name": "auth_token", "value": "LIVE-SESSION", "domain": ".x.com", "path": "/", "secure": True},
+    {"name": "ct0", "value": "LIVE-CSRF", "domain": ".x.com", "path": "/", "secure": True},
 ]
 FRESH = [
-    {"name": "auth_token", "value": "FRESH-SESSION", "domain": ".x.com", "path": "/"},
-    {"name": "ct0", "value": "FRESH-CSRF", "domain": ".x.com", "path": "/"},
+    {"name": "auth_token", "value": "FRESH-SESSION", "domain": ".x.com", "path": "/", "secure": True},
+    {"name": "ct0", "value": "FRESH-CSRF", "domain": ".x.com", "path": "/", "secure": True},
 ]
 
 

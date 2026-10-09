@@ -88,6 +88,8 @@ def init():
 @app.command()
 def mcp():
     """Start the MCP stdio server (draft mode default-on)."""
+    from xuse.mcp.stdio import enforce_stdio_stdout_hygiene
+    enforce_stdio_stdout_hygiene()
     try:
         from xuse.mcp import server as mcp_server
     except ModuleNotFoundError as e:

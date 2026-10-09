@@ -17,8 +17,26 @@ from xuse.models import ScrapedTweet, TweetContent
 
 from . import executor as ex
 from .executor import Ctx, ToolError
+from .browser_bridge import browser_call, uses_playwright
 
 logger = logging.getLogger(__name__)
+
+
+async def _browser_write(ctx, account_id, operation, kind, dedup_key, *args, **kwargs):
+    result = await browser_call(ctx, account_id, operation, *args, kind=kind, **kwargs)
+    try:
+        ex.mark_processed(ctx, dedup_key)
+    except Exception:
+        # The durable browser ledger already prevents a duplicate. Bookkeeping
+        # failure must not turn a confirmed external action into a retry.
+        logger.warning("Legacy dedup recording failed after a confirmed browser action.")
+    try:
+        metrics = ex.metrics_for(ctx, account_id)
+        metrics.log_event(kind, "success", {"source": "mcp", "backend": ctx.session_pool.backend})
+        metrics.increment({"post": "posts", "reply": "replies", "retweet": "retweets", "like": "likes"}.get(kind, kind))
+    except Exception:
+        logger.warning("Metrics recording failed after a confirmed browser action.")
+    return {"account": account_id, "action": operation, **result}
 
 
 async def exec_post(
@@ -27,6 +45,8 @@ async def exec_post(
     text: str,
     media: Optional[List[str]] = None,
     community: Optional[str] = None,
+    action_context=None,
+    media_manifest=None,
 ) -> Dict[str, Any]:
     account_id, raw, model = ex.resolve_account(ctx, account_id)
     ex.require_active(raw, account_id)
@@ -40,6 +60,10 @@ async def exec_post(
     dedup_key = f"post_{account_id}_{hashlib.sha1(key_material.encode('utf-8')).hexdigest()[:12]}"
     if ex.is_processed(ctx, dedup_key):
         raise ToolError("An identical post was already executed for this account (dedup).")
+    if uses_playwright(ctx):
+        options = {"media_manifest": media_manifest} if media_manifest is not None else {}
+        return await _browser_write(ctx, account_id, "post", "post", dedup_key, text,
+                                    media=media, community=community, action_context=action_context, **options)
     content = TweetContent(text=text, local_media_paths=list(media) if media else None)
     await ex.pace(ctx, account_id, action_config)
     await ex.mark_action_now(ctx, account_id)  # pace attempts, not just successes
@@ -70,6 +94,9 @@ async def exec_reply(
     reply_text: str,
     tweet_id: Optional[str] = None,
     text_content: str = "",
+    action_context=None,
+    media: Optional[List[str]] = None,
+    media_manifest=None,
 ) -> Dict[str, Any]:
     account_id, raw, model = ex.resolve_account(ctx, account_id)
     ex.require_active(raw, account_id)
@@ -82,6 +109,14 @@ async def exec_reply(
     dedup_key = f"reply_{account_id}_{tweet_id}"  # same key format as the orchestrator
     if ex.is_processed(ctx, dedup_key):
         raise ToolError(f"Already replied to tweet {tweet_id} from this account (dedup).")
+    if uses_playwright(ctx):
+        options = {"media": media} if media else {}
+        if media_manifest is not None:
+            options["media_manifest"] = media_manifest
+        return await _browser_write(ctx, account_id, "reply", "reply", dedup_key, tweet_url, reply_text,
+                                    action_context=action_context, **options)
+    if media:
+        raise ToolError("Reply attachments require the patchright or playwright browser backend.")
     tweet = ScrapedTweet(tweet_id=tweet_id, tweet_url=tweet_url, text_content=text_content or "")
     await ex.pace(ctx, account_id, action_config)
     await ex.mark_action_now(ctx, account_id)  # pace attempts, not just successes
@@ -102,13 +137,16 @@ async def exec_reply(
     return {"account": account_id, "action": "reply_to_tweet", "tweet_id": tweet_id, "success": True}
 
 
-async def exec_like(ctx: Ctx, account_id: str, tweet_id: str, tweet_url: Optional[str]) -> Dict[str, Any]:
+async def exec_like(ctx: Ctx, account_id: str, tweet_id: str, tweet_url: Optional[str], *, action_context=None) -> Dict[str, Any]:
     account_id, raw, model = ex.resolve_account(ctx, account_id)
     ex.require_active(raw, account_id)
     action_config = ex.current_action_config(ctx, model)
     dedup_key = f"like_{account_id}_{tweet_id}"
     if ex.is_processed(ctx, dedup_key):
         raise ToolError(f"Already liked tweet {tweet_id} from this account (dedup).")
+    if uses_playwright(ctx):
+        return await _browser_write(ctx, account_id, "like", "like", dedup_key,
+                                    tweet_url or f"https://x.com/i/status/{tweet_id}", action_context=action_context)
     await ex.pace(ctx, account_id, action_config)
     await ex.mark_action_now(ctx, account_id)  # pace attempts, not just successes
     async with ctx.session_pool.session(account_id) as browser_manager:
@@ -129,13 +167,16 @@ async def exec_like(ctx: Ctx, account_id: str, tweet_id: str, tweet_url: Optiona
 
 
 async def exec_retweet(ctx: Ctx, account_id: str, tweet_id: str, tweet_url: Optional[str],
-                       text_content: str = "") -> Dict[str, Any]:
+                       text_content: str = "", *, action_context=None) -> Dict[str, Any]:
     account_id, raw, model = ex.resolve_account(ctx, account_id)
     ex.require_active(raw, account_id)
     action_config = ex.current_action_config(ctx, model)
     dedup_key = f"retweet_{account_id}_{tweet_id}"
     if ex.is_processed(ctx, dedup_key):
         raise ToolError(f"Already retweeted tweet {tweet_id} from this account (dedup).")
+    if uses_playwright(ctx):
+        return await _browser_write(ctx, account_id, "retweet", "retweet", dedup_key,
+                                    tweet_url or f"https://x.com/i/status/{tweet_id}", action_context=action_context)
     tweet = ScrapedTweet(tweet_id=tweet_id, tweet_url=tweet_url, text_content=text_content or "")
     await ex.pace(ctx, account_id, action_config)
     await ex.mark_action_now(ctx, account_id)  # pace attempts, not just successes
@@ -219,12 +260,20 @@ async def generate_reply_text(ctx: Ctx, account_id: str, original: ScrapedTweet)
 async def execute_draft(ctx: Ctx, draft) -> Dict[str, Any]:
     """Execute an approved draft via the same executors as direct mode."""
     payload = draft.payload
+    context = {"draft_id": draft.draft_id}
+    if draft.action == "publish_thread":
+        from .thread_tools import execute_thread_draft
+        return await execute_thread_draft(ctx, draft)
+    if draft.action in ("send_message", "follow_profile"):
+        from .browser_tools import execute_browser_draft
+        return await execute_browser_draft(ctx, draft)
     if draft.action in ("post_tweet", "generate_and_post"):
         return await exec_post(
             ctx, draft.account,
             text=payload.get("text", ""),
             media=payload.get("media") or None,
             community=payload.get("community"),
+            action_context=context,
         )
     if draft.action == "reply_to_tweet":
         return await exec_reply(
@@ -233,12 +282,15 @@ async def execute_draft(ctx: Ctx, draft) -> Dict[str, Any]:
             reply_text=payload.get("text", ""),
             tweet_id=payload.get("tweet_id"),
             text_content=payload.get("text_content", ""),
+            action_context=context,
+            **({"media": payload["media"]} if payload.get("media") else {}),
         )
     if draft.action == "engage_like":
-        return await exec_like(ctx, draft.account, payload["tweet_id"], payload.get("tweet_url"))
+        return await exec_like(ctx, draft.account, payload["tweet_id"], payload.get("tweet_url"), action_context=context)
     if draft.action == "engage_retweet":
         return await exec_retweet(
             ctx, draft.account, payload["tweet_id"], payload.get("tweet_url"),
             text_content=payload.get("text_content", ""),
+            action_context=context,
         )
     raise ToolError(f"Unsupported draft action '{draft.action}'.")

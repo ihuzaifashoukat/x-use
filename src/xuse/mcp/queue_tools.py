@@ -160,16 +160,26 @@ def register_queue_tools(server, ctx: Ctx) -> None:
     @server.tool(annotations=READ_ONLY_LOCAL)
     @guard
     async def list_queue(account: Optional[str] = None,
-                         status: Optional[str] = None) -> Dict[str, Any]:
+                         status: Optional[str] = None, limit: int = 50,
+                         offset: int = 0) -> Dict[str, Any]:
         """List queued actions with their full payloads (exactly what will
-        fire), plus per-status counts. Read-only, never starts a browser."""
+        fire), plus per-status counts. limit 1-100; offset pages through
+        local history. Read-only, never starts a browser."""
         store = _store(ctx)
         if status is not None and status not in ALL_STATUSES:
             raise ToolError(f"Unknown status '{status}'. Allowed: {list(ALL_STATUSES)}.")
+        if isinstance(limit, bool) or not 1 <= limit <= 100 or isinstance(offset, bool) or offset < 0:
+            raise ToolError("Use limit between 1 and 100 and a non-negative offset.")
+        if account is not None:
+            account = ex.resolve_account(ctx, account)[0]
         items = store.list(account=account, status=status)
-        items.sort(key=lambda i: i.created_at)
-        return ok_(count=len(items), counts=store.counts(account=account),
-                   items=[i.model_dump(mode="json") for i in items])
+        items.sort(key=lambda i: (i.created_at, i.queue_id))
+        total = len(items)
+        page = items[offset:offset + limit]
+        next_offset = offset + len(page) if offset + len(page) < total else None
+        return ok_(count=len(page), total=total, next_offset=next_offset,
+                   counts=store.counts(account=account),
+                   items=[i.model_dump(mode="json") for i in page])
 
     @server.tool(annotations=LOCAL_WRITE_IDEMPOTENT)
     @guard
