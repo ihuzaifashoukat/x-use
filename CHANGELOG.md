@@ -10,15 +10,13 @@ project follows [semantic versioning](https://semver.org/). See
 
 ## [Unreleased]
 
-No changes recorded after the 3.0.0 release candidate.
+No changes recorded yet.
 
-## [3.0.0] - release candidate
-
-Prepared for release; tagging and publication follow passing CI and maintainer review.
+## [3.0.0] - 2026-10-09
 
 ### Added
 
-- V3 Outreach development: 70 MCP tools, seven workflow prompts, and seven
+- V3 Outreach: 70 MCP tools, seven workflow prompts, and seven
   bundled agent skills, with a Claude Code plugin and local marketplace.
 - A dedicated `x-use-inbox` skill for contextual messages, unread/request
   triage, structured notifications and uncertain-delivery recovery.
@@ -53,6 +51,9 @@ Prepared for release; tagging and publication follow passing CI and maintainer r
 
 ### Fixed
 
+- Fresh PyPI installations include starter setup templates. Source preset
+  discovery is independent of `X_USE_HOME`, and setup creates private
+  configuration files while preserving existing files unless replaced explicitly.
 - Interrupted drafts, queued writes, and uncertain thread segments no longer
   become automatic resend candidates. State is persisted before being exposed.
 - Private state permissions, cookie validation, reviewed attachment snapshots,
@@ -404,6 +405,7 @@ CLI.
 
 - `python src/main.py` still works, with a warning pointing to `x-use run`.
 
+[3.0.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.4.1...v3.0.0
 [2.4.1]: https://github.com/ihuzaifashoukat/x-use/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/ihuzaifashoukat/x-use/compare/v2.3.0...v2.3.1

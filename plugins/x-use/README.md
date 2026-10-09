@@ -1,8 +1,9 @@
 # x-use Claude Code plugin
 
-This plugin installs the x-use Agent Skills and connects Claude Code to the
-`x-use` MCP server from this source checkout. The plugin is not yet available
-from the public marketplace; use the local checkout steps below.
+This plugin installs seven x-use Agent Skills, including messaging and
+notification workflows, and connects Claude Code to the `x-use` MCP server.
+Install through the GitHub marketplace or load a local checkout as described
+below. The Python server must be installed and available on Claude Code's PATH.
 
 ## Install from a local checkout
 
@@ -42,8 +43,28 @@ the data directory private. Cookie exports should remain outside source
 control; provide their file paths through x-use setup and never paste cookie
 contents into chat.
 
-After the plugin files are published to the GitHub repository, it can also be
-installed from the marketplace with:
+## Install from the GitHub marketplace
+
+Install the server and Chromium using the [package installation steps](../../README.md#install).
+Before launching Claude Code, set a stable private `X_USE_HOME` in that shell:
+
+```powershell
+$env:X_USE_HOME = Join-Path $env:LOCALAPPDATA 'x-use'
+x-use init
+claude
+```
+
+On macOS/Linux:
+
+```bash
+export X_USE_HOME="$HOME/.local/share/x-use"
+x-use init
+claude
+```
+
+The `x-use` executable must be on PATH; if using a virtual environment, activate
+it or add its `bin` / `Scripts` directory before starting Claude Code. Inside
+Claude Code, install the plugin from this repository:
 
 ```text
 /plugin marketplace add ihuzaifashoukat/x-use

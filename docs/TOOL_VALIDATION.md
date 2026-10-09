@@ -1,9 +1,9 @@
 # MCP tool validation matrix
 
-The 3.0.0 release preparation adds the `x-use-inbox` workflow skill; the tool
+Version 3.0.0 includes the `x-use-inbox` workflow skill; the tool
 inventory remains 70. Seven skills now ship in both the package and plugin.
 Current packaging, cancellation and cross-platform CI changes are documented in
-[the release-preparation audit](RESILIENCE_AUDIT.md#300-release-preparation).
+[the release audit](RESILIENCE_AUDIT.md#300-release-validation).
 No live-account tests were added during that cleanup, so the individual live
 statuses below retain their recorded scope.
 

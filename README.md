@@ -10,9 +10,7 @@ No official X API is used. Write tools stage drafts by default; messages and fol
 
 The detailed [runtime audit](docs/RESILIENCE_AUDIT.md) records the controls, test evidence and remaining compatibility gaps. The [tool validation matrix](docs/TOOL_VALIDATION.md) distinguishes live-account results from isolated tests for every registered tool.
 
-> **Educational-use disclaimer:** intended for personal, educational, noncommercial experiments on accounts you own or are authorized to manage. Do not use it for unsolicited bulk outreach or to bypass platform protections. X's rules still apply, and this project makes no promise of undetectable activity or protection from account restrictions.
-
-> This branch prepares **3.0.0**. The package is not released until maintainer review, passing CI and publication. See the [migration notes](CHANGELOG.md#migration-from-2x) before upgrading an existing setup.
+**x-use 3.0.0** brings reviewed outreach, structured messages and notifications, and seven agent skills. See the [migration notes](CHANGELOG.md#migration-from-2x) when upgrading from 2.x. Use accounts you own or are authorized to manage.
 
 [![MCP Badge](https://lobehub.com/badge/mcp/ihuzaifashoukat-x-use)](https://lobehub.com/mcp/ihuzaifashoukat-x-use)
 [![Glama score](https://glama.ai/mcp/servers/ihuzaifashoukat/x-use/badges/score.svg)](https://glama.ai/mcp/servers/ihuzaifashoukat/x-use)
@@ -30,7 +28,8 @@ The detailed [runtime audit](docs/RESILIENCE_AUDIT.md) records the controls, tes
 From PyPI (CLI and MCP server):
 
 ```bash
-pip install x-use-mcp
+python -m pip install --upgrade x-use-mcp
+python -m patchright install chromium
 ```
 
 From an existing checkout, one command installs uv if needed, synchronizes the locked dependencies into `.venv`, installs matching Chromium, creates missing sample configuration and runs `x-use doctor`:
@@ -87,6 +86,12 @@ x-use init     # interactive wizard: presets, account + cookie import, LLM keys
 x-use doctor   # verify browser/driver, cookies, LLM keys, proxies
 ```
 
+Set `X_USE_HOME` to an absolute private directory before setup and use the same
+value in your MCP client environment. PyPI installations include a Patchright
+starter configuration and an inactive sample account; source checkouts also
+offer the [full preset library](presets/README.md). Existing configuration is
+kept unless you explicitly choose to replace it.
+
 Then connect your AI client. Paste this into `claude_desktop_config.json` (Claude Desktop > Settings > Developer > Edit Config); the same `command`/`args` pair works for any MCP client that runs stdio servers:
 
 ```json
@@ -94,12 +99,15 @@ Then connect your AI client. Paste this into `claude_desktop_config.json` (Claud
   "mcpServers": {
     "x-use": {
       "command": "x-use",
-      "args": ["mcp"]
+      "args": ["mcp"],
+      "env": {"X_USE_HOME": "/absolute/path/to/x-use-data"}
     }
   }
 }
 ```
 
+Replace the `X_USE_HOME` placeholder with the directory used during setup
+(Windows paths can use forward slashes, such as `C:/Users/you/AppData/Local/x-use`).
 If `x-use` is not on your client's PATH, use the full path the installer printed (for example `.venv/bin/x-use` or `.venv\Scripts\x-use.exe`). Restart the client, then ask it to `list_accounts`.
 
 **Draft mode is on by default.** Ordinary publishing tools return a reviewable draft for `approve_draft`; operators can explicitly disable that mode with `"mcp": { "draft_mode": false }`. Messages, follows and thread starts still require draft approval. Queue processing, opt-in auto-drain and the legacy batch runner are separate execution paths, so draft mode is not a global prohibition on writes.
@@ -174,7 +182,7 @@ Tools are what the model calls. Prompts and resources are the other two halves o
 
 ## Agent skills
 
-`x-use init` (or `x-use skills install`) installs seven agent skills for Claude Code and Codex: **x-use** (overview), **x-use-setup** (onboarding), **x-use-engage** (research and replies), **x-use-inbox** (messages, unread/request folders, and notifications), **x-use-content** (content creation), **x-use-review** (daily digest), and **x-use-threads** (thread reading, review, and continuation). For Claude Code, use the [local plugin setup guide](plugins/x-use/README.md) to load the MCP server and skills from this checkout with an absolute data directory. Marketplace installation is available after the new plugin files are published.
+`x-use init` (or `x-use skills install`) installs seven agent skills for Claude Code and Codex: **x-use** (overview), **x-use-setup** (onboarding), **x-use-engage** (research and replies), **x-use-inbox** (messages, unread/request folders, and notifications), **x-use-content** (content creation), **x-use-review** (daily digest), and **x-use-threads** (thread reading, review, and continuation). For Claude Code, the [plugin setup guide](plugins/x-use/README.md) covers marketplace installation and local checkout loading with an absolute data directory.
 
 **Zero-knowledge setup:** paste the prompt from [docs/SETUP_PROMPT.md](docs/SETUP_PROMPT.md) into your AI client, it installs, registers, verifies, and interviews you to configure your account.
 
@@ -191,7 +199,7 @@ x-use mcp                             # start the MCP stdio server
 
 Pipelines for `--pipeline`: `community_engagement`, `competitor_reposts`, `content_curation`, `keyword_replies`, `keyword_retweets`, `likes`. The MCP `run_cycle` tool accepts the same names.
 
-The legacy `python src/main.py` entry point still works via a deprecation shim. It is scheduled for removal in v3.0; the whole v2 series keeps it.
+The legacy `python src/main.py` entry point remains available through a deprecated compatibility shim. Use `x-use run` for the legacy batch engine.
 
 ## Features
 

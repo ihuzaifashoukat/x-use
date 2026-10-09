@@ -1,15 +1,14 @@
 # Roadmap
 
-The 3.0.0 release candidate centers on reviewed X outreach, structured inbox
-management and resilient local sessions. Release readiness depends on the CI
-results for the exact commit and maintainer review. This roadmap records scope,
-not a promise of platform compatibility or scheduled delivery.
+Version 3.0.0 centers on reviewed X outreach, structured inbox management and
+resilient local sessions. This roadmap describes the shipped capabilities and
+priorities for subsequent releases.
 
-## Implemented in the 3.0.0 candidate
+## Included in 3.0.0
 
 - Async Patchright account contexts with ownership locks, bounded capacity,
   configured proxy routes and process cleanup.
-- Seventy MCP tools, seven prompts, four read-only resources and six skills.
+- Seventy MCP tools, seven prompts, four read-only resources and seven skills.
 - Structured profile, post, thread, media, inbox and notification reads, with
   partial coverage and unknown evidence represented explicitly.
 - Reviewed messaging, follows and multi-post threads, durable action journals,

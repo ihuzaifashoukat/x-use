@@ -356,7 +356,7 @@ x-use skills list      # show what is installed where
 
 `x-use init` offers the same install. Claude Code users can load the plugin
 from this checkout; see [the local plugin setup guide](../plugins/x-use/README.md).
-The marketplace recipe is available after these plugin files are published.
+The same guide covers marketplace installation from the GitHub repository.
 
 ## Troubleshooting
 

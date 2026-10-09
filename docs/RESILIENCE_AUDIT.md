@@ -4,11 +4,10 @@ Audit dates: 2026-10-08 through 2026-10-09. Scope: the MCP stdio server, browser
 
 The current follow-up review and earlier verification totals are separated below. All changes retain the existing package layout and X-only scope.
 
-## 3.0.0 release preparation
+## 3.0.0 release validation
 
-Package and product manifests now use 3.0.0. This is release preparation;
-merging, tagging and publication remain separate maintainer actions. The
-current inventory is 70 tools, seven prompts, four resources and seven bundled
+Package and product manifests use 3.0.0. The release inventory is
+70 tools, seven prompts, four resources and seven bundled
 skills. The new `x-use-inbox` skill covers message reads, unread/request folders,
 contextual approved sends, notifications and recovery. It is included in both
 the wheel and the identical Claude plugin skill tree. Independent fictional
@@ -36,9 +35,19 @@ tests run both async drivers on Python 3.12 on each OS. Test collection confirme
 the source/native partition covered every case; a missing selected driver fails
 the native job. Locked installation, dependency advisory and container jobs are
 separate. Follow the matching commit in the
-[branch CI runs](https://github.com/ihuzaifashoukat/x-use/actions/workflows/ci.yml?query=branch%3Afeat%2Fv3-outreach)
-for remote completion; earlier failures are diagnostic evidence, not a passing
-release gate. No new live-account action was performed for this release cleanup.
+[CI runs](https://github.com/ihuzaifashoukat/x-use/actions/workflows/ci.yml)
+and [release workflow](https://github.com/ihuzaifashoukat/x-use/actions/workflows/publish.yml)
+for verification of each revision. No new live-account action was performed for
+this documentation and packaging work.
+
+Fresh installed packages include starter setup templates; source preset
+discovery no longer follows the writable data directory. The package smoke
+exercises `x-use init` and a second run with isolated data and client homes,
+checking private configuration, inactive sample accounts and preservation of
+existing files. Cancellation fixtures wait for observable phases and settled
+results without imposing a two-second storage deadline. Controlled delayed
+reservation and completion checks retain the same ledger and account-lock
+assertions, and an early refusal still fails immediately.
 
 The local source partition passed **1,491 tests**, with eight platform skips,
 ten native cases assigned to the wheel partition, and two existing legacy UTC

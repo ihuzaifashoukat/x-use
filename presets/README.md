@@ -6,6 +6,11 @@ Existing configurations default to skip. You can also copy a settings file to
 `config/settings.json` and an account file to `config/accounts.json` yourself;
 back up existing configuration before replacing it.
 
+These files are the source checkout's preset library. PyPI installations carry
+a built-in Patchright starter and inactive reviewed-outreach account, so
+`x-use init` also works without a checkout. Preset discovery is independent of
+`X_USE_HOME`; that variable selects where your private configuration is saved.
+
 ## Current MCP setup
 
 Use `settings/beginner-patchright.json` with `accounts/reviewed_outreach.json`
