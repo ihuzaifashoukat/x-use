@@ -3,34 +3,52 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONNOUSERSITE: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
 
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-
-      - name: Install package with dev extras
+          cache-dependency-path: pyproject.toml
+      - name: Install package and development dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[dev]'
-
-      - name: Import smoke check
-        run: |
-          python -c "import xuse, xuse.orchestrator, xuse.features.publisher.composer; print('import smoke ok')"
-
-      - name: Gitignore invariants (secrets stay untracked, presets stay tracked)
+          python -m pip install -e '.[dev]'
+          python -m pip check
+          mkdir -p test-results
+          python -m pip list --format=json > test-results/dependencies.json
+      - name: Gitignore invariants
         run: |
           git check-ignore -q config/accounts.json
           git check-ignore -q config/anything_cookies.json
@@ -38,6 +56,221 @@ jobs:
           git ls-files presets/ | grep -q 'presets/accounts/growth.json'
           git ls-files config/ | grep -q 'config/accounts.example.json'
           ! git ls-files config/ | grep -qx 'config/accounts.json'
+      - name: Validate POSIX installer syntax
+        if: runner.os == 'Linux'
+        run: bash -n install.sh
+      - name: Validate PowerShell installer syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path install.ps1), [ref]$tokens, [ref]$errors) > $null
+          if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+      - name: Validate installer manifests and rendered MCP configuration
+        run: python -m pytest -q tests/test_install_manifests.py tests/test_setup_uv.py
+      - name: Run offline tests
+        run: python -m pytest -q -m 'not smoke' --junitxml=test-results/unit.xml
+      - name: Build and validate wheel and source distribution
+        run: |
+          python -m build
+          python -m twine check --strict dist/*
+      - name: Create a clean wheel environment outside the checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/xuse-wheel"
+          if [ "$RUNNER_OS" = 'Windows' ]; then
+            echo "WHEEL_PYTHON=$RUNNER_TEMP/xuse-wheel/Scripts/python.exe" >> "$GITHUB_ENV"
+          else
+            echo "WHEEL_PYTHON=$RUNNER_TEMP/xuse-wheel/bin/python" >> "$GITHUB_ENV"
+          fi
+      - name: Install only the built wheel in the clean environment
+        run: |
+          "$WHEEL_PYTHON" -m pip install --upgrade pip
+          "$WHEEL_PYTHON" -m pip install dist/*.whl
+          "$WHEEL_PYTHON" -m pip check
+      - name: Verify installed package, bundled skills, CLI and MCP protocol
+        run: >-
+          "$WHEEL_PYTHON" scripts/ci_browser_smoke.py
+          --mode package --expect-installed
+          --report test-results/package-smoke.json
+      - name: Install declared wheel development extras for DOM scenarios
+        if: matrix.python-version == '3.12'
+        run: |
+          for wheel in dist/*.whl; do
+            "$WHEEL_PYTHON" -m pip install "${wheel}[dev]"
+          done
+      # Browser binaries match the installed Patchright version. Never cache
+      # browser profiles or reuse mismatched binaries across dependency updates.
+      - name: Install official Chromium and Linux libraries
+        if: matrix.python-version == '3.12' && runner.os == 'Linux'
+        run: '"$WHEEL_PYTHON" -m patchright install --with-deps chromium'
+      - name: Install official Chromium on macOS or Windows
+        if: matrix.python-version == '3.12' && runner.os != 'Linux'
+        run: '"$WHEEL_PYTHON" -m patchright install chromium'
+      - name: Run synthetic DOM browser smoke without external network
+        if: matrix.python-version == '3.12'
+        run: >-
+          "$WHEEL_PYTHON" scripts/ci_browser_smoke.py
+          --mode browser --expect-installed
+          --report test-results/browser-smoke.json
+          --artifacts test-results/browser
+      - name: Require synthetic native browser scenarios against the installed wheel
+        if: matrix.python-version == '3.12'
+        env:
+          XUSE_TEST_BROWSER_CHANNEL: chromium
+          XUSE_TEST_BROWSER_DRIVER: patchright
+          XUSE_REQUIRE_BROWSER_TESTS: '1'
+        run: >-
+          "$WHEEL_PYTHON" -m pytest -q
+          tests/browser/*_dom.py
+          tests/browser/test_network_privacy.py tests/browser/test_reviewed_uploads.py
+          tests/browser/test_session_process_cleanup.py
+          tests/mcp/test_thread_tools.py
+          -o junit_family=legacy
+          --junitxml=test-results/native-dom.xml
+      - name: Upload diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
-      - name: Run tests
-        run: pytest -q
+  locked:
+    name: Locked uv / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONNOUSERSITE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Install the verified uv version
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.12.23'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Validate and install the committed universal lock
+        run: |
+          uv lock --check
+          uv sync --locked --extra dev --python 3.12
+          uv pip check
+      - name: Verify the locked installation without account access
+        run: >-
+          uv run --locked --extra dev python scripts/ci_browser_smoke.py
+          --mode package --report test-results/locked-smoke.json
+      - name: Upload locked-installation diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-locked-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  security:
+    name: Known dependency advisories / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONNOUSERSITE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.12.23'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the locked runtime and development dependencies
+        run: |
+          uv sync --locked --extra dev --python '${{ matrix.python-version }}'
+          uv pip check
+          mkdir -p test-results
+      # Keep the scanner in its own tool environment: it must not upgrade or
+      # replace the dependencies being audited. Export the complete hashed lock
+      # without our local project; runtime, legacy and development packages remain.
+      # This checks published advisories, not browser binaries or application code.
+      - name: Audit locked dependencies against the PyPI advisory database
+        run: |
+          uv export --locked --extra dev --no-dev --no-default-groups \
+            --no-emit-project --format requirements.txt \
+            --output-file test-results/audited-requirements.txt > /dev/null
+          uv tool run --python '${{ matrix.python-version }}' --from pip-audit==2.10.1 pip-audit \
+            --requirement test-results/audited-requirements.txt \
+            --require-hashes --disable-pip --strict \
+            --progress-spinner off --timeout 30 --format json \
+            --output test-results/dependency-advisories.json
+      - name: Upload advisory diagnostics even when findings fail CI
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: advisories-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  container:
+    name: Container targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build credential-free introspection image
+        run: docker build --target runtime -t xuse-introspection:ci .
+      - name: Verify packaged MCP introspection in the image
+        run: >-
+          docker run --rm --init --entrypoint python
+          -v "$PWD/scripts:/ci:ro" xuse-introspection:ci
+          /ci/ci_browser_smoke.py --mode package --expect-installed
+      - name: Build browser-ready image
+        run: docker build --target browser -t xuse-browser:ci .
+      - name: Verify synthetic browser fixture as the non-root image user
+        run: >-
+          docker run --name xuse-browser-check --init --shm-size=1g
+          --entrypoint python -v "$PWD/scripts:/ci:ro" xuse-browser:ci
+          /ci/ci_browser_smoke.py --mode browser --expect-installed
+          --report /tmp/xuse-smoke/browser.json --artifacts /tmp/xuse-smoke/browser
+      - name: Collect fixture diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p test-results/container
+          docker cp xuse-browser-check:/tmp/xuse-smoke/. test-results/container/ || true
+          docker rm -f xuse-browser-check || true
+      - name: Upload container diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-container
+          path: test-results/container/
+          if-no-files-found: ignore
+          retention-days: 7

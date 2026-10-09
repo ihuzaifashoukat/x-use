@@ -17,60 +17,86 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  verify:
+    name: Verify supported environments before publishing
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Build distributions
+    needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
 
+      - name: Check the release tag against package metadata
+        run: >-
+          python -c "import os, runpy; version=runpy.run_path('src/xuse/__init__.py')['__version__'];
+          assert os.environ['GITHUB_REF_NAME'].removeprefix('v') == version,
+          'Release tag must match the package version before publishing.'"
+
       - name: Build sdist and wheel
         run: |
-          python -m pip install --upgrade pip build
+          python -m pip install --upgrade pip 'build>=1.2,<2'
           python -m build
 
       - name: Check distributions
         run: |
-          python -m pip install --upgrade twine
+          python -m pip install --upgrade 'twine>=6,<7'
           python -m twine check --strict dist/*
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dist
           path: dist/
           if-no-files-found: error
+          retention-days: 7
 
   publish:
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/p/x-use-mcp
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: dist
           path: dist/
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
 
   mcp-registry:
     name: Publish to MCP Registry
     needs: publish
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       id-token: write # GitHub OIDC, so no PAT secret is needed
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Derive version from the release tag
         id: version
@@ -112,8 +138,21 @@ jobs:
           cat server.json
 
       - name: Install mcp-publisher
+        env:
+          MCP_PUBLISHER_VERSION: v1.8.1
+          # Official release asset digest, reviewed before updating this pin:
+          # https://api.github.com/repos/modelcontextprotocol/registry/releases/tags/v1.8.1
+          MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          test "$(uname -s)" = Linux
+          test "$(uname -m)" = x86_64
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --max-time 120 \
+            "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz" \
+            --output mcp-publisher.tar.gz
+          printf '%s  %s\n' "$MCP_PUBLISHER_SHA256" mcp-publisher.tar.gz | sha256sum --check --strict
+          tar --extract --gzip --file=mcp-publisher.tar.gz \
+            --no-same-owner --no-same-permissions mcp-publisher
+          chmod 0755 mcp-publisher
 
       - name: Authenticate to the MCP Registry
         run: ./mcp-publisher login github-oidc
