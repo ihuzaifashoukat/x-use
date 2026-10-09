@@ -18,6 +18,7 @@ One pass: status -> pending work -> decisions.
 3. **Pending drafts.** `list_drafts(status="pending", account)`. Present a
    numbered table: action, target, text preview, draft_id.
 4. **Queue.** `list_queue(account)`: what's staged, what's due, what failed.
+   Follow `next_offset` as the next call's `offset` until it is `null`.
 5. **Decisions, always the user's.** Ask what to do, then:
    - approve specific drafts -> `approve_draft(draft_id)` one at a time
    - reject -> `reject_draft(draft_id)`

@@ -18,23 +18,29 @@ the user's system.
 
 ## 1. Check the prerequisites
 
-Python 3.10 or newer, and Google Chrome. Check both:
+Python 3.10 or newer with venv support. Check Python:
 
 ```bash
 python --version
 ```
 
-If either is missing, say so and stop. There is no workaround: x-use drives a
-real Chrome window, and that is the whole design.
+If Python is missing, explain the prerequisite. Setup installs the Chromium
+browser matching the default Patchright driver. Installed Chrome or Edge is
+also supported through `mcp.browser_channel`.
 
 ## 2. Install
 
 ```bash
 pip install x-use-mcp
+python -m patchright install chromium
 ```
 
-This provides the `x-use` command. If the user is working inside a clone of the
-repository instead, `pip install -e .` from the repo root does the same thing.
+This provides the `x-use` command and matching Chromium. Inside a checkout,
+prefer the one-command uv setup: `py -3 scripts/setup_uv.py` on Windows or
+`python3 scripts/setup_uv.py` on macOS/Linux. It installs missing uv locally,
+uses the dependency lock and creates `.venv`; use that environment's full
+`x-use` executable path for registration. Linux system libraries are explicit
+with `--with-system-deps`, which can require OS permission.
 
 Then verify:
 
@@ -50,7 +56,7 @@ the one that actually blocks progress.
 
 If `x-use` is not found after installing, it is a PATH problem, not a failed
 install. `pip show -f x-use-mcp` locates the console script; use its full path
-everywhere below, for example `venv/bin/x-use` or `venv\Scripts\x-use.exe`.
+everywhere below, for example `.venv/bin/x-use` or `.venv\Scripts\x-use.exe`.
 
 ## 3. Install the workflow skills
 
@@ -58,20 +64,22 @@ everywhere below, for example `venv/bin/x-use` or `venv\Scripts\x-use.exe`.
 x-use skills install
 ```
 
-This writes five skills to `~/.claude/skills/` and `~/.agents/skills/`, so Claude
+This writes six skills to `~/.claude/skills/` and `~/.agents/skills/`, so Claude
 Code and Codex-style agents both pick them up. They cover engagement, content,
-daily review, and account setup. `--force` overwrites existing copies, and
+daily review, account setup, and X thread workflows. `--force` overwrites existing copies, and
 `x-use skills list` shows what landed.
 
 ## 4. Register the MCP server, then restart the client
 
-Work out which client you are running inside and register x-use in that one. The
-config is identical everywhere: command `x-use`, args `["mcp"]`.
+Work out which client you are running inside and register x-use in that one.
+Use the full executable path and absolute data directory printed by the
+installer. Set `X_USE_HOME` in the server environment so settings, accounts
+and state stay stable when the client starts from another working directory.
 
 - **Claude Code:**
 
   ```bash
-  claude mcp add x-use -- x-use mcp
+  claude mcp add --scope user x-use --env X_USE_HOME=/absolute/path/to/x-use-data -- /absolute/path/to/x-use/.venv/bin/x-use mcp
   ```
 
 - **Claude Desktop** (`claude_desktop_config.json`), **Cursor**, **Windsurf**,
@@ -81,8 +89,9 @@ config is identical everywhere: command `x-use`, args `["mcp"]`.
   {
     "mcpServers": {
       "x-use": {
-        "command": "x-use",
-        "args": ["mcp"]
+        "command": "/absolute/path/to/x-use/.venv/bin/x-use",
+        "args": ["mcp"],
+        "env": {"X_USE_HOME": "/absolute/path/to/x-use-data"}
       }
     }
   }
@@ -92,8 +101,11 @@ config is identical everywhere: command `x-use`, args `["mcp"]`.
 
   ```toml
   [mcp_servers.x-use]
-  command = "x-use"
+  command = "/absolute/path/to/x-use/.venv/bin/x-use"
   args = ["mcp"]
+
+  [mcp_servers.x-use.env]
+  X_USE_HOME = "/absolute/path/to/x-use-data"
   ```
 
 **Now tell the user to restart the client, and stop.** A stdio MCP server is
@@ -142,8 +154,9 @@ update_account(
 ```
 
 `self_handles` matters more than it looks. Without it the own-post guard cannot
-fire, and nothing can later find the posts this account published, because
-`approve_draft` returns no URL.
+fire, and x-use cannot identify the account's historical posts from this
+configuration. For a published thread, use `get_thread_run` to retrieve the
+confirmed post URLs.
 
 ## 7. Set the persona
 

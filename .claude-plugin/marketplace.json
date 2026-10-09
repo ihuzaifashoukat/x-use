@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "x-use",
+  "version": "1.0.0",
+  "description": "Claude Code plugins for browser-native X workflows.",
+  "owner": {
+    "name": "Huzaifa Shoukat"
+  },
+  "plugins": [
+    {
+      "name": "x-use",
+      "source": "./plugins/x-use",
+      "description": "Connect Claude Code to the x-use MCP server and install focused X workflow skills.",
+      "version": "2.4.1",
+      "category": "productivity"
+    }
+  ]
+}

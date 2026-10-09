@@ -11,15 +11,25 @@ that are already done, and confirm each before moving on.
 
 ## 1. Verify the install
 
-- Run `x-use doctor`. It checks Chrome/driver, cookies, LLM key, proxies.
-- If `x-use` is not found: `pip install x-use-mcp`, then re-run doctor.
+- Run `x-use doctor`. It checks the selected Patchright/Playwright browser,
+  cookies, LLM key and proxies without launching a browser.
+- If working in a checkout, use `py -3 scripts/setup_uv.py` on Windows or
+  `python3 scripts/setup_uv.py` on macOS/Linux and use the `.venv` executable.
+  Otherwise install `pip install x-use-mcp` and
+  `python -m patchright install chromium`, then re-run doctor.
 - If the MCP server is not registered in this client yet, register it, then
-  ask the user to restart the client:
+  ask the user to restart the client. Use the absolute executable path and
+  absolute data directory printed by the installer; set `X_USE_HOME` in the
+  MCP server environment so configuration and state stay stable across client
+  working directories:
   - Claude Desktop (`claude_desktop_config.json`):
-    `{"mcpServers": {"x-use": {"command": "x-use", "args": ["mcp"]}}}`
-  - Claude Code: `claude mcp add x-use -- x-use mcp`
+    `{"mcpServers": {"x-use": {"command": "/absolute/path/to/x-use/.venv/bin/x-use", "args": ["mcp"], "env": {"X_USE_HOME": "/absolute/path/to/x-use-data"}}}}`
+  - Cursor, Windsurf, and other clients using `mcpServers` JSON: use the same
+    `command`, `args`, and `env` fields shown for Claude Desktop.
+  - Claude Code: `claude mcp add --scope user x-use --env X_USE_HOME=/absolute/path/to/x-use-data -- /absolute/path/to/x-use/.venv/bin/x-use mcp`
   - Codex (`~/.codex/config.toml`):
-    `[mcp_servers.x-use]` with `command = "x-use"`, `args = ["mcp"]`
+    `[mcp_servers.x-use]` with the absolute `command` path and `args = ["mcp"]`,
+    plus `[mcp_servers.x-use.env]` with `X_USE_HOME = "/absolute/path/to/x-use-data"`.
 
 ## 2. Account + cookies
 
@@ -64,3 +74,11 @@ replies.
 Stage something real but harmless: use x-use-engage to research one reply
 draft, or x-use-content to stage one post draft. Show it via `list_drafts`.
 Tell the user: nothing posts until you say `approve_draft(<id>)`.
+
+Inbox verification uses `get_inbox`; results cover only visible conversations.
+`unread=null` means the UI supplied no reliable read-state evidence. Opening a
+chat may mark it as read. If `pin_required`, use the owner's server environment
+variable with `unlock_inbox`; never request a PIN in tool arguments or store it
+in drafts. Stop for unsupported UI or account challenges. Messages and follows
+always need individual draft approval, and an uncertain write needs explicit
+outcome reconciliation after inspecting X before any retry.

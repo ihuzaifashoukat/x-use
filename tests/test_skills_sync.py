@@ -40,8 +40,13 @@ def test_root_skill_is_the_setup_skill():
         "pip install x-use-mcp",       # install
         "x-use doctor",                # verify
         "x-use skills install",        # workflow skills
-        "claude mcp add x-use",        # Claude Code registration
-        '"command": "x-use"',          # JSON-client registration
+        "claude mcp add",              # Claude Code registration
+        "--scope user",                # user-level MCP registration
+        "--env X_USE_HOME=",           # stable configuration/state location
+        "/absolute/path/to/x-use/.venv/bin/x-use mcp",  # executable path
+        '"env": {"X_USE_HOME": "/absolute/path/to/x-use-data"}',  # JSON clients
+        "[mcp_servers.x-use.env]",     # Codex server environment
+        '"command": "/absolute/path/to/x-use/.venv/bin/x-use"',  # JSON-client executable path
         "[mcp_servers.x-use]",         # Codex registration
         "add_account(",                # first account
         "update_account(",            # keywords, handles, persona
@@ -64,7 +69,13 @@ def test_registration_snippets_agree_between_root_and_packaged_setup():
     to a config that does not work."""
     root = (ROOT / "SKILL.md").read_text(encoding="utf-8")
     packaged = (PACK / "x-use-setup" / "SKILL.md").read_text(encoding="utf-8")
-    for snippet in ("claude mcp add x-use -- x-use mcp", "[mcp_servers.x-use]"):
+    for snippet in (
+        "claude mcp add", "--scope user", "--env X_USE_HOME=",
+        "/absolute/path/to/x-use/.venv/bin/x-use mcp",
+        '"env": {"X_USE_HOME": "/absolute/path/to/x-use-data"}',
+        "[mcp_servers.x-use]", "[mcp_servers.x-use.env]",
+        'X_USE_HOME = "/absolute/path/to/x-use-data"',
+    ):
         assert snippet in root and snippet in packaged, \
             f"registration snippet drifted between root and x-use-setup: {snippet}"
 
@@ -84,5 +95,11 @@ def test_plugin_manifest_and_marketplace_exist():
         (ROOT / "plugins" / "x-use" / ".claude-plugin" / "plugin.json")
         .read_text(encoding="utf-8"))
     assert plugin["name"] == "x-use"
-    marketplace = json.loads((ROOT / "marketplace.json").read_text(encoding="utf-8"))
+    marketplace = json.loads(
+        (ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     assert any(p["name"] == "x-use" for p in marketplace["plugins"])
+    mcp = json.loads((ROOT / "plugins" / "x-use" / ".mcp.json")
+                     .read_text(encoding="utf-8"))
+    assert mcp["x-use"]["command"] == "x-use"
+    assert mcp["x-use"]["args"] == ["mcp"]
+    assert mcp["x-use"]["env"]["X_USE_HOME"] == "${X_USE_HOME}"

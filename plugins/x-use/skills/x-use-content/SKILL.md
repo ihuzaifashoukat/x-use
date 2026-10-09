@@ -31,8 +31,8 @@ Research -> draft -> polish -> stage. The user picks what ships.
 - Original text in the user's voice. Never repost someone else's wording.
 - Media for posts: only local file paths the user provides
   (`post_tweet(..., media=[path])`). Never invent image files.
-- Threads are not supported yet (coming in v2.4), so stage parts as separate
-  drafts and tell the user.
+- For X thread composition, use **x-use-threads** so the sequence is staged and
+  its durable progress can be reviewed safely.
 - Server-side generation (`generate_and_post`, `draft_post_variations`)
   exists for the API tier, but YOUR writing is the default: it's free and
   it's better.

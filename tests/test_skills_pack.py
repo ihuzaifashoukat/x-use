@@ -1,4 +1,4 @@
-"""The bundled skills pack: 5 skills, parseable frontmatter, size-bounded.
+"""The bundled skills pack: 6 skills, parseable frontmatter, size-bounded.
 
 The frontmatter tests parse real YAML rather than matching line prefixes. An
 earlier version only checked `line.startswith("description: ")`, which happily
@@ -14,7 +14,7 @@ import pytest
 yaml = pytest.importorskip("yaml", reason="pyyaml is a dev dependency")
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED = {"x-use", "x-use-setup", "x-use-engage", "x-use-content", "x-use-review"}
+EXPECTED = {"x-use", "x-use-setup", "x-use-engage", "x-use-content", "x-use-review", "x-use-threads"}
 
 # agentskills.io spec plus Anthropic's platform constraints.
 MAX_NAME = 64
@@ -46,7 +46,7 @@ def _ids(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
-def test_pack_contains_exactly_the_five_skills():
+def test_pack_contains_exactly_the_six_skills():
     assert set(_skill_dirs()) == EXPECTED
 
 

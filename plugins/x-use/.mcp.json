@@ -1,0 +1,9 @@
+{
+  "x-use": {
+    "command": "x-use",
+    "args": ["mcp"],
+    "env": {
+      "X_USE_HOME": "${X_USE_HOME}"
+    }
+  }
+}
