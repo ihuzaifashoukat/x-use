@@ -4,19 +4,19 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/ihuzaifashoukat/x-use/main/install.sh | bash
-#   ./install.sh [--dir PATH] [--dev] [--update] [-h|--help]
+#   ./install.sh [--dir PATH] [--dev] [--update] [--skip-browser] [--with-system-deps]
 #
 # What it does:
 #   1. Preflight: git and Python >= 3.10 must be present.
 #   2. Clone the repo (or reuse/update an existing clone, or install in
 #      place when run from inside the repo).
-#   3. Create a virtual environment (venv/) and install x-use into it.
-#   4. Bootstrap local config: .env and config/accounts.json from the
-#      shipped examples (never overwrites existing files).
-#   5. Run `x-use doctor` so you immediately see what is left to set up.
+#   3. Bootstrap uv locally if needed and synchronize .venv from uv.lock.
+#   4. Install Chromium for the configured Patchright or Playwright backend.
+#   5. Create missing sample config and run doctor without overwriting config.
 #
 # The script is idempotent: re-running it reuses the clone and the venv.
-# It never uses sudo and never touches files outside the install directory.
+# Administrator changes are opt-in with --with-system-deps on Linux. uv and
+# browser drivers use their normal user caches; no global Python packages change.
 
 set -euo pipefail
 
@@ -29,6 +29,8 @@ readonly MIN_PYTHON_MINOR=10
 INSTALL_DIR=""
 DEV_INSTALL=0
 UPDATE=0
+SKIP_BROWSER=0
+WITH_SYSTEM_DEPS=0
 
 # --- output helpers -----------------------------------------------------------
 
@@ -51,12 +53,14 @@ install.sh - one-click installer for x-use.
 
 Usage:
   curl -fsSL https://raw.githubusercontent.com/ihuzaifashoukat/x-use/main/install.sh | bash
-  ./install.sh [--dir PATH] [--dev] [--update] [-h|--help]
+  ./install.sh [--dir PATH] [--dev] [--update] [--skip-browser] [--with-system-deps]
 
 Options:
   --dir PATH   Install into PATH instead of ./x-use
   --dev        Install with dev extras (pytest) for contributors
   --update     git pull --ff-only an existing checkout before installing
+  --skip-browser       Reuse an already-installed matching browser
+  --with-system-deps   Allow Linux OS-package installation (may request sudo)
   -h, --help   Show this help
 EOF
     exit "${1:-0}"
@@ -75,6 +79,10 @@ while [[ $# -gt 0 ]]; do
             DEV_INSTALL=1; shift ;;
         --update)
             UPDATE=1; shift ;;
+        --skip-browser)
+            SKIP_BROWSER=1; shift ;;
+        --with-system-deps)
+            WITH_SYSTEM_DEPS=1; shift ;;
         -h|--help)
             usage 0 ;;
         *)
@@ -110,7 +118,7 @@ INSTALL_DIR="${INSTALL_DIR:-${DEFAULT_DIR}}"
 if [[ -f "${INSTALL_DIR}/pyproject.toml" ]] && grep -q '^name = "x-use' "${INSTALL_DIR}/pyproject.toml" 2>/dev/null; then
     if [[ "${UPDATE}" -eq 1 ]]; then
         info "Updating existing clone in ${INSTALL_DIR} ..."
-        git -C "${INSTALL_DIR}" pull --ff-only || warn "git pull failed - keeping the existing checkout."
+        git -C "${INSTALL_DIR}" pull --ff-only || die "git pull failed; the existing checkout was not updated."
     else
         info "Existing x-use checkout found in ${INSTALL_DIR} - reusing it (pass --update to pull latest)."
     fi
@@ -124,85 +132,51 @@ else
         || die "the clone does not look like x-use v2 (missing pyproject.toml). The default branch may predate the v2 merge - clone the right branch or set XUSE_REPO_URL."
 fi
 
-# --- virtual environment -----------------------------------------------------------
+# --- shared uv/browser setup -----------------------------------------------------------
 
-VENV_DIR="${INSTALL_DIR}/venv"
-if [[ -d "${VENV_DIR}" ]]; then
-    info "Virtual environment already exists at ${VENV_DIR} - reusing it."
-else
-    info "Creating virtual environment at ${VENV_DIR} ..."
-    "${PYTHON}" -m venv "${VENV_DIR}"
+INSTALL_DIR="$(cd "${INSTALL_DIR}" && pwd)"
+if [[ -z "${X_USE_HOME:-}" ]]; then
+    DATA_BASE="${XDG_DATA_HOME:-${HOME:?HOME is required to choose a data directory}/.local/share}"
+    X_USE_HOME="${DATA_BASE%/}/x-use"
 fi
-
-# venv layout differs by platform: bin/ on Linux/macOS, Scripts/ on Windows (Git Bash).
-if [[ -x "${VENV_DIR}/bin/python" ]]; then
-    VENV_PY="${VENV_DIR}/bin/python"
-elif [[ -x "${VENV_DIR}/Scripts/python.exe" ]]; then
-    VENV_PY="${VENV_DIR}/Scripts/python.exe"
-else
-    die "venv created at ${VENV_DIR} but no python executable found inside it."
+if command -v cygpath >/dev/null 2>&1; then
+    X_USE_HOME="$(cygpath -w "${X_USE_HOME}")"
 fi
-BIN_DIR="$(dirname "${VENV_PY}")"
-
-# --- install ------------------------------------------------------------------------
-
-info "Installing x-use (this can take a minute) ..."
-"${VENV_PY}" -m pip install --quiet --upgrade pip
-if [[ "${DEV_INSTALL}" -eq 1 ]]; then
-    (cd "${INSTALL_DIR}" && "${VENV_PY}" -m pip install --quiet -e '.[dev]')
-else
-    (cd "${INSTALL_DIR}" && "${VENV_PY}" -m pip install --quiet -e .)
-fi
-
+export X_USE_HOME
+SETUP_SCRIPT="${INSTALL_DIR}/scripts/setup_uv.py"
+[[ -f "${SETUP_SCRIPT}" ]] || die "the checkout is missing scripts/setup_uv.py."
+SETUP_ARGS=("${SETUP_SCRIPT}")
+[[ "${DEV_INSTALL}" -eq 0 ]] || SETUP_ARGS+=(--dev)
+[[ "${SKIP_BROWSER}" -eq 0 ]] || SETUP_ARGS+=(--skip-browser)
+[[ "${WITH_SYSTEM_DEPS}" -eq 0 ]] || SETUP_ARGS+=(--with-system-deps)
+info "Setting up uv, x-use and the configured browser ..."
+"${PYTHON}" "${SETUP_ARGS[@]}"
+BIN_DIR="${INSTALL_DIR}/.venv/bin"
+[[ -x "${BIN_DIR}/x-use" ]] || BIN_DIR="${INSTALL_DIR}/.venv/Scripts"
 XUSE_BIN="${BIN_DIR}/x-use"
 [[ -x "${XUSE_BIN}" ]] || XUSE_BIN="${BIN_DIR}/x-use.exe"
-[[ -x "${XUSE_BIN}" ]] || die "install finished but the x-use command was not found in ${BIN_DIR}."
-"${XUSE_BIN}" --help >/dev/null 2>&1 || die "x-use was installed but fails to run (${XUSE_BIN} --help)."
-info "Installed x-use -> ${XUSE_BIN}"
-
-# --- config bootstrap (never overwrites) ----------------------------------------------
-
-if [[ -f "${INSTALL_DIR}/.env.example" && ! -f "${INSTALL_DIR}/.env" ]]; then
-    cp "${INSTALL_DIR}/.env.example" "${INSTALL_DIR}/.env"
-    info "Created .env from .env.example - add your LLM API key(s) there."
-fi
-if [[ -f "${INSTALL_DIR}/config/accounts.example.json" && ! -f "${INSTALL_DIR}/config/accounts.json" ]]; then
-    cp "${INSTALL_DIR}/config/accounts.example.json" "${INSTALL_DIR}/config/accounts.json"
-    info "Created config/accounts.json from the example (ships inactive - configure it via x-use init)."
-fi
-
-# --- doctor ----------------------------------------------------------------------------
-
-info "Running preflight checks (x-use doctor) ..."
-DOCTOR_FAILED=0
-(cd "${INSTALL_DIR}" && "${XUSE_BIN}" doctor) || DOCTOR_FAILED=1
+[[ -x "${XUSE_BIN}" ]] || die "setup finished but the x-use command was not found in ${BIN_DIR}."
 
 # --- done -------------------------------------------------------------------------------
 
 # Claude Desktop on Windows needs a C:\... path; cygpath converts when available.
 MCP_BIN="$(cygpath -w "${XUSE_BIN}" 2>/dev/null || printf '%s' "${XUSE_BIN}")"
+MCP_CONFIG="$("${PYTHON}" "${INSTALL_DIR}/scripts/mcp_config.py" "${MCP_BIN}" "${X_USE_HOME}")"
+INSTALL_DIR_Q="$(printf '%q' "${INSTALL_DIR}")"
+DATA_HOME_Q="$(printf '%q' "${X_USE_HOME}")"
 
 printf '\n%sx-use is installed.%s\n' "${C_BOLD}" "${C_RESET}"
-if [[ "${DOCTOR_FAILED}" -eq 1 ]]; then
-    warn "doctor reported issues above - fix the FAIL rows, then you are set."
-fi
 cat <<EOF
 
 Next steps:
-  1. cd ${INSTALL_DIR}
-  2. ${BIN_DIR}/x-use init      # interactive wizard: account, cookies, LLM keys
-  3. ${BIN_DIR}/x-use doctor    # re-check until every row is PASS/SKIP
-  4. ${BIN_DIR}/x-use run       # or connect an MCP client (below)
+  1. cd -- ${INSTALL_DIR_Q}
+  2. export X_USE_HOME=${DATA_HOME_Q}
+  3. "${XUSE_BIN}" init      # interactive wizard: account, cookies, LLM keys
+  4. "${XUSE_BIN}" doctor    # re-check until every row is PASS/SKIP
+  5. "${XUSE_BIN}" run       # or connect an MCP client (below)
 
 MCP client config (e.g. claude_desktop_config.json):
-  {
-    "mcpServers": {
-      "x-use": {
-        "command": "${MCP_BIN}",
-        "args": ["mcp"]
-      }
-    }
-  }
+${MCP_CONFIG}
 
 Docs: README.md, BEST_PRACTICES.md, docs/CONFIG_REFERENCE.md
 EOF
