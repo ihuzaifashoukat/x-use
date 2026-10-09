@@ -448,8 +448,13 @@ async def test_repeated_cancellation_settles_ledger_before_releasing_account(
                 pytest.fail("Account lock released while ledger work is in flight")
         assert busy.value.reason == "account_busy"
         release.set()
+        # Reservation can still initialize private SQLite files after release.
+        # Its connection timeout is 10 s; cleanup has no 2 s latency contract.
+        # Observe completion without injecting another cancellation via wait_for.
+        done, _ = await asyncio.wait({task}, timeout=30)
+        assert task in done, "Reserved action did not settle after ledger release"
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, 2)
+            task.result()
     finally:
         release.set()
         if not task.done():
