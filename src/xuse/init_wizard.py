@@ -31,17 +31,19 @@ PRESETS_DIR = PROJECT_ROOT / "presets"
 _SAFE_ACCOUNT_ID = re.compile(r"[A-Za-z0-9_-]+")
 
 SETTINGS_PRESET_BLURBS = {
-    "beginner-defaults.json": "simple defaults (Firefox, headless, no proxies)",
-    "beginner-chrome-undetected.json": "Chrome + undetected-chromedriver + stealth (recommended)",
-    "beginner-proxies-hash.json": "Chrome + proxy pools (stable hash selection)",
-    "beginner-proxies-roundrobin.json": "Chrome + proxy pools (round-robin rotation)",
+    "beginner-patchright.json": "recommended MCP: headless Patchright, reviewed drafts + durable action limits",
+    "beginner-defaults.json": "legacy Selenium batch: Firefox, headless, no proxies",
+    "beginner-chrome-undetected.json": "legacy Selenium batch: Chrome + undetected-chromedriver + stealth",
+    "beginner-proxies-hash.json": "legacy Selenium batch: Chrome + proxy pools (stable hash selection)",
+    "beginner-proxies-roundrobin.json": "legacy Selenium batch only: Chrome + rotating proxy pools",
 }
 ACCOUNTS_PRESET_BLURBS = {
+    "reviewed_outreach.json": "recommended MCP: inactive starter for individually reviewed outreach",
     "growth.json": "proactive growth: competitor reposts + engagement decisioning",
     "brand_safe.json": "conservative, on-topic engagement",
     "replies_first.json": "support/FAQ-style reply focus",
     "engagement_light.json": "minimal, safe engagement",
-    "community_posting.json": "posting into a specific community",
+    "community_posting.json": "legacy Selenium: posting into a specific community (async audience unverified)",
 }
 
 ENV_KEYS = [
@@ -76,7 +78,14 @@ def _choose_preset(kind: str, blurbs: Dict[str, str]) -> Optional[Path]:
     for i, p in enumerate(presets, start=1):
         blurb = blurbs.get(p.name, "")
         typer.echo(f"  {i}) {p.name}" + (f" — {blurb}" if blurb else ""))
-    choice = typer.prompt("Choose a number", type=int, default=0)
+    # Recommend current MCP setup only for a new config. Enter still preserves
+    # existing settings/accounts, and an explicit 0 always skips either step.
+    recommended = {"settings": "beginner-patchright.json", "accounts": "reviewed_outreach.json"}
+    default_choice = 0
+    if not (CONFIG_DIR / f"{kind}.json").exists():
+        default_choice = next((i for i, p in enumerate(presets, start=1)
+                               if p.name == recommended.get(kind)), 0)
+    choice = typer.prompt("Choose a number", type=int, default=default_choice)
     if choice <= 0 or choice > len(presets):
         return None
     return presets[choice - 1]

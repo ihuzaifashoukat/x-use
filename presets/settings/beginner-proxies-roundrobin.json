@@ -1,15 +1,40 @@
 {
-  "api_keys": {
-    "gemini_api_key": "YOUR_GEMINI_API_KEY_HERE_OR_LEAVE_BLANK_IF_USING_ENV",
-    "openai_api_key": "YOUR_OPENAI_API_KEY_HERE"
+  "llm": {
+    "api_key": "",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
   },
   "twitter_automation": {
     "response_interval_seconds": 300,
-    "analysis_config": {"enable_relevance_filter": {"competitor_reposts": true, "likes": true}, "thresholds": {"competitor_reposts_min": 0.4, "likes_min": 0.3}},
-    "engagement_decision": {"enabled": true, "use_sentiment": true, "thresholds": {"quote_min": 0.8, "retweet_min": 0.55, "repost_min": 0.4}},
-    "action_config": {"enable_competitor_reposts": true, "max_posts_per_competitor_run": 1, "enable_liking_tweets": true, "max_likes_per_run": 4}
+    "analysis_config": {
+      "enable_relevance_filter": {
+        "competitor_reposts": true,
+        "likes": true
+      },
+      "thresholds": {
+        "competitor_reposts_min": 0.4,
+        "likes_min": 0.3
+      }
+    },
+    "engagement_decision": {
+      "enabled": true,
+      "use_sentiment": true,
+      "thresholds": {
+        "quote_min": 0.8,
+        "retweet_min": 0.55,
+        "repost_min": 0.4
+      }
+    },
+    "action_config": {
+      "enable_competitor_reposts": true,
+      "max_posts_per_competitor_run": 1,
+      "enable_liking_tweets": true,
+      "max_likes_per_run": 4
+    }
   },
-  "logging": {"level": "INFO"},
+  "logging": {
+    "level": "INFO"
+  },
   "browser_settings": {
     "type": "chrome",
     "headless": true,
@@ -24,5 +49,9 @@
     "proxy_pool_strategy": "round_robin",
     "proxy_pool_state_file": "data/proxy_pools_state.json",
     "cookie_domain_url": "https://x.com"
+  },
+  "mcp": {
+    "browser_backend": "selenium",
+    "draft_mode": true
   }
 }

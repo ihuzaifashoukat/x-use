@@ -7,16 +7,16 @@
     "post_to_community": true,
     "community_id": "REPLACE_WITH_COMMUNITY_ID",
     "community_name": "REPLACE_WITH_COMMUNITY_NAME",
-    "target_keywords_override": [
+    "target_keywords": [
       "community topic",
       "fan discussions",
       "latest news"
     ],
-    "competitor_profiles_override": [
+    "competitor_profiles": [
       "https://x.com/OpenAI",
       "https://x.com/DeepMind"
     ],
-    "action_config_override": {
+    "action_config": {
       "enable_competitor_reposts": true,
       "max_posts_per_competitor_run": 1,
       "enable_content_curation_posts": true,

@@ -205,4 +205,3 @@ data/*.sqlite3
 data/*.sqlite3-*
 data/live-smoke*.json
 data/metrics/*.json
-!data/metrics/tech_innovator_001.json

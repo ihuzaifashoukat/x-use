@@ -144,3 +144,36 @@ def test_accounts_step_keeps_existing_file_on_skip(isolated_config, monkeypatch)
     wizard._accounts_step()  # no prompts/confirms at all
 
     assert json.loads((isolated_config / "accounts.json").read_text(encoding="utf-8")) == existing
+
+
+@pytest.mark.parametrize("kind,recommended", [
+    ("settings", "beginner-patchright.json"),
+    ("accounts", "reviewed_outreach.json"),
+])
+@pytest.mark.parametrize("existing", [False, True])
+def test_preset_enter_recommends_mcp_only_for_new_config(
+    isolated_config, tmp_path, monkeypatch, kind, recommended, existing,
+):
+    presets = tmp_path / "presets"
+    folder = presets / kind
+    folder.mkdir(parents=True)
+    (folder / "a-legacy.json").write_text("{}", encoding="utf-8")
+    (folder / recommended).write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(wizard, "PRESETS_DIR", presets)
+    if existing:
+        (isolated_config / f"{kind}.json").write_text("{}", encoding="utf-8")
+    defaults = []
+
+    def press_enter(*args, **kwargs):
+        defaults.append(kwargs["default"])
+        return kwargs["default"]
+
+    monkeypatch.setattr(typer, "prompt", press_enter)
+    chosen = wizard._choose_preset(kind, {})
+    assert defaults == [0 if existing else 2]
+    assert chosen == (None if existing else folder / recommended)
+
+
+def test_explicit_skip_overrides_recommended_preset(isolated_config, monkeypatch):
+    monkeypatch.setattr(typer, "prompt", lambda *args, **kwargs: 0)
+    assert wizard._choose_preset("settings", wizard.SETTINGS_PRESET_BLURBS) is None

@@ -1,14 +1,12 @@
 {
   "examples": [
     "http://user:pass@eu1.proxy.example:8080",
-    "http://user:pass@eu2.proxy.example:8080",
-    "socks5://user:pass@us1.proxy.example:1080",
-    "socks5://user:pass@us2.proxy.example:1080"
+    "https://user:pass@eu2.proxy.example:8443",
+    "socks5://us1.proxy.example:1080"
   ],
   "with_env": [
     "http://user:${RESI_PASS}@eu1.proxy.local:8080",
     "http://user:${RESI_PASS}@eu2.proxy.local:8080"
   ],
-  "notes": "Copy values into config/settings.json browser_settings.proxy_pools. Environment variables like ${RESI_PASS} are expanded at runtime."
+  "notes": "Illustrative routes only: replace hosts and credentials. Copy values into browser_settings.proxy_pools, select hash, and set account proxy to pool:<name>. HTTP/HTTPS and unauthenticated SOCKS5 work with async MCP; authenticated SOCKS5 and round_robin are not supported there. Environment variables like ${RESI_PASS} are expanded at runtime."
 }
-
