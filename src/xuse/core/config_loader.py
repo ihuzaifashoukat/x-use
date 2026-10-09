@@ -1,11 +1,20 @@
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Any, Union, Optional
 
 # Anchor the project root by walking up to a marker, so path resolution
 # survives package moves (src/core/... -> src/xuse/core/...) and editable installs.
 def _find_project_root() -> Path:
+    configured = os.environ.get("X_USE_HOME")
+    if configured:
+        root = Path(configured).expanduser()
+        if not root.is_absolute() or "${" in configured:
+            raise ValueError("X_USE_HOME must be an absolute local directory path.")
+        if root.exists() and not root.is_dir():
+            raise ValueError("X_USE_HOME must name a directory, not a file.")
+        return root.absolute()
     for candidate in Path(__file__).resolve().parents:
         if (candidate / 'config' / 'settings.json').exists() or (candidate / 'pyproject.toml').exists():
             return candidate

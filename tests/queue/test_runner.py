@@ -35,7 +35,10 @@ class RecordingExecutor:
     async def __call__(self, item):
         self.calls.append(item.queue_id)
         if item.dedup_key in self.failures:
-            raise RuntimeError(f"boom:{item.dedup_key}")
+            # An explicit local preflight refusal permits bounded retry.
+            error = RuntimeError(f"boom:{item.dedup_key}")
+            error.reason = "cooldown"
+            raise error
         return {"queue_id": item.queue_id, "success": True}
 
 

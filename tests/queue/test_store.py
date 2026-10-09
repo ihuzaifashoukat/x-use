@@ -39,22 +39,24 @@ def test_last_write_wins(tmp_path):
     assert len([i for i in reloaded.list() if i.queue_id == item.queue_id]) == 1
 
 
-def test_corrupt_lines_are_skipped(tmp_path):
+def test_corrupt_journal_blocks_startup(tmp_path):
     path = tmp_path / "q.jsonl"
     store = QueueStore(path)
     item = make_item(store)
     with path.open("a", encoding="utf-8") as f:
         f.write("this is not json\n")
-    reloaded = QueueStore(path)
-    assert len(reloaded) == 1 and reloaded.get(item.queue_id).queue_id == item.queue_id
+    with pytest.raises(ValueError, match="invalid record"):
+        QueueStore(path)
 
 
-def test_processing_resets_to_pending_on_load(tmp_path):
+def test_processing_stops_for_inspection_on_load(tmp_path):
     path = tmp_path / "q.jsonl"
     store = QueueStore(path)
     item = make_item(store)
     store.set_status(item.queue_id, "processing")
-    assert QueueStore(path).get(item.queue_id).status == "pending"
+    restored = QueueStore(path).get(item.queue_id)
+    assert restored.status == "failed"
+    assert "outcome unconfirmed" in restored.last_error
 
 
 def test_get_unknown_raises_keyerror(tmp_path):
