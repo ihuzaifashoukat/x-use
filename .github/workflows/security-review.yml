@@ -32,13 +32,13 @@ jobs:
       # Python analysis does not install dependencies or execute project code.
       # pull_request supports fork/Dependabot SARIF uploads with read-only tokens.
       - name: Initialize Python security analysis
-        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           languages: python
           build-mode: none
           queries: security-extended
       - name: Analyze and upload security findings
-        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           category: /language:python
           wait-for-processing: true
