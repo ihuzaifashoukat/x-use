@@ -18,7 +18,7 @@ installation and registration; ask only for missing choices or credentials.
 
 ## 1. Check the prerequisites
 
-Python 3.10 or newer with venv support. Check Python:
+Python 3.11 or newer with venv support. Check Python:
 
 ```bash
 python --version

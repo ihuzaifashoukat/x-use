@@ -84,7 +84,7 @@ stale checks. Major, ambiguous, or ineligible updates stay open for manual revie
 The `CI required` job aggregates the automation policy tests, source regressions,
 installed-wheel native browser checks, locked installations, known dependency
 advisories, and container targets. It fails if any contributing job fails, is
-cancelled, or is skipped. The source matrix covers Python 3.10–3.14 across
+cancelled, or is skipped. The source matrix covers Python 3.11–3.14 across
 Windows, Linux and macOS. Ordinary automation uses synthetic fixtures; it does
 not require an X session, PIN, private inbox, or live account.
 

@@ -20,7 +20,7 @@ outside that scope. Preserve existing configuration and prior authorization:
    `python3 scripts/setup_uv.py` on macOS/Linux. This installs uv locally,
    locked dependencies and matching Chromium into an isolated environment.
    Otherwise use `pip install x-use-mcp` followed by
-   `python -m patchright install chromium` (Python 3.10+ required).
+   `python -m patchright install chromium` (Python 3.11+ required).
    Verify: `x-use doctor`. Use the `.venv` executable for a checkout install.
 2. Run `x-use skills install` to install the bundled agent skills.
 3. Choose a stable absolute `X_USE_HOME` for private configuration and state.

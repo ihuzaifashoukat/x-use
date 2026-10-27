@@ -2,7 +2,7 @@
 
 x-use is a Python MCP server and CLI for X. Start with a reproducible problem,
 keep changes scoped, and include evidence for the behavior being changed.
-Development targets Python 3.10–3.14 on Windows, Linux, and macOS.
+Development targets Python 3.11–3.14 on Windows, Linux, and macOS.
 
 ## Development setup
 

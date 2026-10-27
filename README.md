@@ -27,7 +27,7 @@ Your AI client supplies the reasoning and text. An optional OpenAI-compatible LL
 
 ## Quickstart
 
-Requires Python 3.10+ and Chromium. The CI matrix covers Python 3.10–3.14 on Windows, macOS and Linux.
+Requires Python 3.11+ and Chromium. The CI matrix covers Python 3.11–3.14 on Windows, macOS and Linux.
 
 **Version 3.2.0 provides 82 tools** for research, inbox management, reviewed publishing and account operations. Upgrade the package and restart your MCP client to load the current tools.
 

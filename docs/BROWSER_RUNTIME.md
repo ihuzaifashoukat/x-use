@@ -227,7 +227,7 @@ Offline tests cover lifecycle, ownership, cookies, exact post identity, send con
 
 ## CI and release verification
 
-CI tests Windows, macOS and Linux on Python 3.10/3.12/3.14. Each job checks dependency consistency, the offline suite, strict distribution metadata and a clean installed-wheel environment. The MCP smoke checks both module and CLI entry points and rejects diagnostic text on the JSON-RPC stream. Separate uv jobs validate the committed universal lock on all three OSes.
+CI tests Windows, macOS and Linux on Python 3.11/3.12/3.14. Each job checks dependency consistency, the offline suite, strict distribution metadata and a clean installed-wheel environment. The MCP smoke checks both module and CLI entry points and rejects diagnostic text on the JSON-RPC stream. Separate uv jobs validate the committed universal lock on all three OSes.
 
 Python 3.12 jobs install matching Chromium and execute local synthetic DOM pages; container checks run the same smoke under a non-root image user. Synthetic screenshots and traces are retained as diagnostics for seven days. Browser profiles, cookies, PINs and live inbox data are never CI inputs. Release publication waits for the reusable verification workflow and uses OIDC permissions scoped to publishing jobs.
 

@@ -15,7 +15,7 @@ The package name is `x-use-mcp`; the MCP Registry name is `io.github.ihuzaifasho
 - Durable local budgets, account locks, exact-target checks and uncertain-outcome journals reduce duplicate actions. They do not guarantee anonymity, permanent sessions or protection from account restrictions.
 - Each active account has an isolated in-memory browser context and configured proxy route. The shared Chromium process is bounded; an unlocked encrypted inbox lasts only while its context remains available. Restart recovery may need fresh cookies or owner-provided PIN entry.
 - Interactive text comes from the calling AI client. Server-side generation requires an optional OpenAI-compatible LLM configuration. The project does not require an official X API key.
-- Python 3.10–3.14 is covered by the CI matrix on Windows, Linux and macOS. Synthetic browser tests and controlled live checks are documented separately; no test count proves universal live compatibility.
+- Python 3.11–3.14 is covered by the CI matrix on Windows, Linux and macOS. Synthetic browser tests and controlled live checks are documented separately; no test count proves universal live compatibility.
 
 ## Setup and workflow documentation
 

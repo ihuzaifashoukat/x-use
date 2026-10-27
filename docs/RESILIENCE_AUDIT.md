@@ -33,7 +33,7 @@ private-state and process-ownership enforcement. Repeated-cancellation regressio
 also hold the account lock through reservation and outcome bookkeeping, preserve
 confirmed success, and leave uncertain sends recoverable.
 
-The CI source matrix retains Python 3.10–3.14 on Windows, Linux and macOS,
+The CI source matrix retains Python 3.11–3.14 on Windows, Linux and macOS,
 including synthetic OS process-identity checks. Required installed-wheel native
 tests run both async drivers on Python 3.12 on each OS. Test collection confirmed
 the source/native partition covered every case; a missing selected driver fails
@@ -134,7 +134,7 @@ Earlier integrated verification on Windows/Python 3.14.7:
 - Focused comparison runs also passed 201 messaging/observer checks and eight native Windows lifecycle scenarios using both async drivers. These overlap the final partitions and are not additional unique live-account scenarios.
 - One-command setup, idempotent configuration preservation, shell syntax, universal lock validation, plugin/skill consistency and source privacy checks passed. The dependency audit found no known advisories in 92 applicable dependencies.
 
-The CI matrix covers Windows, Linux and macOS with Python 3.10–3.14, with locked installs, native browser checks, package validation, dependency advisories and release gates. Remote jobs and Docker targets were not executed from this Windows checkout. The tool matrix records which calls have live evidence; these totals do not mean every tool passed against a real account.
+The CI matrix covers Windows, Linux and macOS with Python 3.11–3.14, with locked installs, native browser checks, package validation, dependency advisories and release gates. Remote jobs and Docker targets were not executed from this Windows checkout. The tool matrix records which calls have live evidence; these totals do not mean every tool passed against a real account.
 
 ## Earlier extension: session isolation, threads and media
 
@@ -215,7 +215,7 @@ Remote Linux/macOS matrix jobs and Docker targets are configured, but were not e
 
 The MCP server defaults to async Patchright with optional Playwright compatibility. It exposes 64 tools and six workflow prompts, including 31 browser, inbox, recovery and outreach tools. A shared policy boundary applies durable budgets and records uncertain outcomes for approved drafts, immediate actions and queue execution. Messages and follows always need individual draft approval. Campaign preparation creates local drafts; it never sends a batch.
 
-This is a browser application with changing upstream pages. It cannot guarantee freedom from account restrictions, perpetual selector compatibility, or successful operation on every device. Supported development targets are desktop Windows, macOS and Linux with Python 3.10 or newer and a compatible Chromium browser. Mobile operating systems are not native server targets; a mobile MCP client needs a separate host running the server.
+This is a browser application with changing upstream pages. It cannot guarantee freedom from account restrictions, perpetual selector compatibility, or successful operation on every device. Supported development targets are desktop Windows, macOS and Linux with Python 3.11 or newer and a compatible Chromium browser. Mobile operating systems are not native server targets; a mobile MCP client needs a separate host running the server.
 
 The default backend deliberately stops for login challenges, rate limits, unidentified recipients, unsupported pages and unconfirmed outcomes. The legacy Selenium CLI and batch pipeline dependencies remain available for explicit compatibility use. Community audience verification and the legacy `run_cycle` batch path have not been migrated to the async browser runtime.
 

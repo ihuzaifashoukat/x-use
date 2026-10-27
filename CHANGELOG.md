@@ -10,6 +10,17 @@ project follows [semantic versioning](https://semver.org/). See
 
 ## [Unreleased]
 
+### Changed
+
+- Python 3.11 is now the minimum. Python 3.10 reaches end of life this month,
+  and the Pillow 13 security release that fixes the open Pillow advisories
+  requires 3.11. The CI matrix, installers and setup script follow the new floor.
+
+### Security
+
+- Pillow 13.0 and certifi 2026.10.23 clear the advisories that were failing the
+  dependency-advisory CI job.
+
 ## [3.2.0] - 2026-10-13
 
 A maintenance release: the same 82 tools on the MCP Python SDK v2 line, with
