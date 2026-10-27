@@ -3,7 +3,7 @@
     One-click installer for x-use on Windows.
 
 .DESCRIPTION
-    1. Preflight: git and Python >= 3.10 must be present.
+    1. Preflight: git and Python >= 3.11 must be present.
     2. Clone the repo (or reuse/update an existing clone, or install in
        place when run from inside the repo).
     3. Bootstrap uv locally when needed and synchronize .venv from uv.lock.
@@ -42,7 +42,7 @@ $ErrorActionPreference = 'Stop'
 
 $RepoUrl = if ($env:XUSE_REPO_URL) { $env:XUSE_REPO_URL } else { "https://github.com/ihuzaifashoukat/x-use.git" }
 $MinPythonMajor = 3
-$MinPythonMinor = 10
+$MinPythonMinor = 11
 
 function Write-Info([string]$Msg) { Write-Host "==> $Msg" -ForegroundColor Green }
 function Write-Warn([string]$Msg) { Write-Host "warn: $Msg" -ForegroundColor Yellow }

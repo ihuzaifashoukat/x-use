@@ -70,7 +70,7 @@ automation.
 ## Install & client setup
 
 ```bash
-pip install x-use-mcp    # Python 3.10+
+pip install x-use-mcp    # Python 3.11+
 python -m patchright install chromium
 x-use doctor             # verify browser/driver, cookies, LLM key, proxies
 ```

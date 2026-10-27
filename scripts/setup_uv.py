@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Install the project, uv and its browser with one local Python command.
 
-Requires Python 3.10+ with venv/ensurepip support. No packages are installed
+Requires Python 3.11+ with venv/ensurepip support. No packages are installed
 into the caller's Python. Existing uv is reused; otherwise a pinned uv wheel
 is installed into .cache/uv-bootstrap. Project dependencies use uv.lock when
 present. A fresh environment reuses the invoking Python when it is Python
-3.10-3.14; otherwise it uses Python 3.12. Existing .venv Python and user
+3.11-3.14; otherwise it uses Python 3.12. Existing .venv Python and user
 configuration are preserved. Linux OS packages are opt-in only.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from typing import Optional, Sequence
 # Deliberately pin the bootstrap tool; update alongside lock/tooling review.
 UV_VERSION = "0.12.23"
 DEFAULT_PYTHON = "3.12"
-MIN_VALIDATED_PYTHON = (3, 10)
+MIN_VALIDATED_PYTHON = (3, 11)
 MAX_VALIDATED_PYTHON = (3, 14)
 DEFAULT_SETTINGS = {
     "mcp": {
@@ -176,8 +176,8 @@ def setup(root: Path, *, dev: bool = False, python: Optional[str] = None,
           strict_doctor: bool = False, start_mcp: bool = False,
           platform_name: Optional[str] = None) -> int:
     """Perform an idempotent local installation; never start MCP by default."""
-    if sys.version_info < (3, 10):
-        raise SetupError("Setup requires Python 3.10 or newer.")
+    if sys.version_info < (3, 11):
+        raise SetupError("Setup requires Python 3.11 or newer.")
     root = root.resolve()
     platform_name = platform_name or sys.platform
     if platform_name not in ("win32", "darwin", "linux"):
@@ -257,7 +257,7 @@ def setup(root: Path, *, dev: bool = False, python: Optional[str] = None,
 def main(argv: Optional[Sequence[str]] = None, *, project_root: Optional[Path] = None) -> int:
     parser = argparse.ArgumentParser(description="Install uv, the project environment, and Chromium with one command.")
     parser.add_argument("--dev", action="store_true", help="Include the project's development extra.")
-    parser.add_argument("--python", help="Python version/interpreter for a fresh environment (default: the invoking Python when 3.10-3.14, otherwise 3.12; existing .venv is reused).")
+    parser.add_argument("--python", help="Python version/interpreter for a fresh environment (default: the invoking Python when 3.11-3.14, otherwise 3.12; existing .venv is reused).")
     parser.add_argument("--with-system-deps", action="store_true",
                         help="Allow the selected browser driver to install Linux OS packages; this may request administrator permission.")
     parser.add_argument("--skip-browser", action="store_true", help="Reuse an already-installed browser; omit the browser download.")

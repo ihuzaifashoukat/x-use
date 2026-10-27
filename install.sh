@@ -7,7 +7,7 @@
 #   ./install.sh [--dir PATH] [--dev] [--update] [--skip-browser] [--with-system-deps]
 #
 # What it does:
-#   1. Preflight: git and Python >= 3.10 must be present.
+#   1. Preflight: git and Python >= 3.11 must be present.
 #   2. Clone the repo (or reuse/update an existing clone, or install in
 #      place when run from inside the repo).
 #   3. Bootstrap uv locally if needed and synchronize .venv from uv.lock.
@@ -24,7 +24,7 @@ set -euo pipefail
 readonly REPO_URL="${XUSE_REPO_URL:-https://github.com/ihuzaifashoukat/x-use.git}"
 readonly DEFAULT_DIR="x-use"
 readonly MIN_PYTHON_MAJOR=3
-readonly MIN_PYTHON_MINOR=10
+readonly MIN_PYTHON_MINOR=11
 
 INSTALL_DIR=""
 DEV_INSTALL=0
