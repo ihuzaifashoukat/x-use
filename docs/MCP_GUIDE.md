@@ -262,9 +262,12 @@ strategy, each account's assignment, and the global fallback proxy. Read-only.
 
 **Write (draft-gated)**
 
-### post_tweet(account, text, media?, community?)
+### post_tweet(account, text, media?, community?, quote_tweet_url?)
 
-Post text/media, optionally into a community.
+Post text/media, optionally into a community. With `quote_tweet_url`, the
+post is a quote of that tweet and its text and media go in the quote (async
+browser backend only). It stops before Post unless X's quote composer shows the
+quoted author, and a requested attachment that cannot be uploaded stops it too.
 
 ### generate_and_post(account, topic)
 

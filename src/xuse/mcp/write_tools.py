@@ -36,27 +36,36 @@ def register_write_tools(server, ctx: Ctx) -> None:
         text: str,
         media: Optional[List[str]] = None,
         community: Optional[str] = None,
+        quote_tweet_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Post a tweet from an account. `media` = local file paths; `community`
-        = target community id. In draft mode (default) returns a draft for
-        review and posts nothing; approve_draft(draft_id) executes it."""
+        = target community id; `quote_tweet_url` = post it as a quote of that
+        tweet, with the text and media in the quote (async browser backend).
+        In draft mode (default) returns a draft for review and posts nothing;
+        approve_draft(draft_id) executes it."""
         account_id, _, _ = ex.resolve_account(ctx, account)
         if not text or not text.strip():
             raise ToolError("Tweet text must not be empty.")
+        if quote_tweet_url and not ex.tweet_id_from_url(quote_tweet_url):
+            raise ToolError(f"Could not parse a tweet id from URL: {quote_tweet_url}")
         if ctx.draft_mode:
             preview = f"Post as @{account_id}: \"{text}\""
             if media:
                 preview += f" (+{len(media)} media file(s))"
             if community:
                 preview += f" → community {community}"
+            if quote_tweet_url:
+                preview += f" quoting {quote_tweet_url}"
             draft = ctx.draft_store.create(
                 account=account_id,
                 action="post_tweet",
-                payload={"text": text, "media": list(media or []), "community": community},
+                payload={"text": text, "media": list(media or []), "community": community,
+                         **({"quote_tweet_url": quote_tweet_url} if quote_tweet_url else {})},
                 preview=preview,
             )
             return draft_response(draft)
-        result = await actions.exec_post(ctx, account_id, text=text, media=media, community=community)
+        result = await actions.exec_post(ctx, account_id, text=text, media=media, community=community,
+                                         quote_tweet_url=quote_tweet_url)
         return ok_(**result)
 
     @server.tool(annotations=PUBLISHES_TO_X)

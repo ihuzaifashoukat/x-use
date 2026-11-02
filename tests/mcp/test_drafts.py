@@ -97,6 +97,32 @@ async def test_approve_draft_executes_exactly_once(mcp_server, stubbed_ctx, publ
 
 
 @pytest.mark.asyncio
+async def test_quote_post_draft_carries_target_and_legacy_backend_refuses_it(mcp_server, stubbed_ctx, publisher_instances):
+    quoted = "https://x.com/person/status/123"
+    draft = await call_tool(mcp_server, "post_tweet", {"account": "acc1", "text": "my take", "quote_tweet_url": quoted})
+    assert draft["payload"]["quote_tweet_url"] == quoted
+    assert quoted in draft["preview"]
+
+    # Selenium cannot open the quote composer; never post the text as a plain post.
+    approved = await call_tool(mcp_server, "approve_draft", {"draft_id": draft["draft_id"]})
+    assert_error_envelope(approved, "Quote posts require")
+    assert total_publisher_calls(publisher_instances) == 0
+
+
+@pytest.mark.asyncio
+async def test_plain_post_draft_payload_has_no_quote_field(mcp_server):
+    draft = await call_tool(mcp_server, "post_tweet", {"account": "acc1", "text": "plain"})
+    assert "quote_tweet_url" not in draft["payload"]
+
+
+@pytest.mark.asyncio
+async def test_unparseable_quote_target_is_rejected_before_a_draft(mcp_server):
+    result = await call_tool(mcp_server, "post_tweet", {"account": "acc1", "text": "hi", "quote_tweet_url": "https://x.com/person"})
+    assert_error_envelope(result, "Could not parse a tweet id")
+    assert mcp_server.xuse_ctx.draft_store.list() == []
+
+
+@pytest.mark.asyncio
 async def test_approve_unknown_draft_id_rejected(mcp_server, stubbed_ctx, publisher_instances):
     result = await call_tool(mcp_server, "approve_draft", {"draft_id": "nope"})
     error = assert_error_envelope(result, "Unknown draft_id")

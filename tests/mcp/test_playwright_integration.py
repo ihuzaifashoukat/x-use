@@ -60,8 +60,8 @@ class Browser:
             raise BrowserActionError("send_unconfirmed")
         return {"success": True, "message_id": "message-1"}
 
-    async def post(self, text, media=None, community=None):
-        self.calls.append(("post", text))
+    async def post(self, text, media=None, community=None, quote_tweet_url=None):
+        self.calls.append(("post", text) if quote_tweet_url is None else ("post", text, quote_tweet_url))
         return {"success": True, "tweet_id": "123"}
 
     async def follow(self, handle):
@@ -311,6 +311,33 @@ async def test_post_search_and_queue_use_async_backend_and_same_budget(async_ser
     await call_tool(async_server, "queue_post", {"account": "acc1", "text": "second"})
     await call_tool(async_server, "process_queue", {"account": "acc1", "max_actions": 1})
     assert [call for call in ctx.session_pool.browser.calls if call[0] == "post"] == [("post", "first")]
+
+
+@pytest.mark.asyncio
+async def test_approved_quote_draft_reaches_the_async_browser_with_its_target(async_server):
+    ctx = async_server.xuse_ctx
+    quoted = "https://x.com/person/status/123"
+    draft = await call_tool(async_server, "post_tweet", {"account": "acc1", "text": "my take", "quote_tweet_url": quoted})
+    assert (await call_tool(async_server, "approve_draft", {"draft_id": draft["draft_id"]}))["ok"]
+    assert ctx.session_pool.browser.calls == [("post", "my take", quoted)]
+    # The same text as a plain post is a different post, not a dedup hit.
+    ctx.draft_mode = False
+    assert (await call_tool(async_server, "post_tweet", {"account": "acc1", "text": "my take"}))["ok"]
+    assert ctx.session_pool.browser.calls[-1] == ("post", "my take")
+
+
+@pytest.mark.asyncio
+async def test_quote_dedup_keys_on_the_tweet_id_not_the_url_spelling(async_server):
+    ctx = async_server.xuse_ctx
+    ctx.draft_mode = False
+    quoted = "https://x.com/person/status/123"
+    assert (await call_tool(async_server, "post_tweet",
+                            {"account": "acc1", "text": "my take", "quote_tweet_url": quoted}))["ok"]
+    # X's share button appends tracking parameters to the same permalink.
+    again = await call_tool(async_server, "post_tweet",
+                            {"account": "acc1", "text": "my take", "quote_tweet_url": quoted + "?s=46&t=abc"})
+    assert again["ok"] is False and again["error"]["reason"] == "already_executed"
+    assert ctx.session_pool.browser.calls == [("post", "my take", quoted)]
 
 
 @pytest.mark.asyncio
