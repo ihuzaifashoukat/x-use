@@ -47,6 +47,7 @@ async def exec_post(
     community: Optional[str] = None,
     action_context=None,
     media_manifest=None,
+    quote_tweet_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     account_id, raw, model = ex.resolve_account(ctx, account_id)
     ex.require_active(raw, account_id)
@@ -56,14 +57,21 @@ async def exec_post(
     # Same text with different media or community is NOT the same post — the
     # key discriminates on the full payload. Keep byte-identical with
     # queue_tools.queue_post so the enqueue gate and this executor agree.
+    # A quote target joins the key only when set, so plain-post keys are unchanged.
     key_material = (text or "") + "|" + str(media or []) + "|" + str(community)
+    if quote_tweet_url:
+        key_material += "|" + quote_tweet_url
     dedup_key = f"post_{account_id}_{hashlib.sha1(key_material.encode('utf-8')).hexdigest()[:12]}"
     if ex.is_processed(ctx, dedup_key):
         raise ToolError("An identical post was already executed for this account (dedup).", reason="already_executed")
     if uses_playwright(ctx):
         options = {"media_manifest": media_manifest} if media_manifest is not None else {}
+        if quote_tweet_url:
+            options["quote_tweet_url"] = quote_tweet_url
         return await _browser_write(ctx, account_id, "post", "post", dedup_key, text,
                                     media=media, community=community, action_context=action_context, **options)
+    if quote_tweet_url:
+        raise ToolError("Quote posts require the patchright or playwright browser backend.")
     content = TweetContent(text=text, local_media_paths=list(media) if media else None)
     await ex.pace(ctx, account_id, action_config)
     await ex.mark_action_now(ctx, account_id)  # pace attempts, not just successes
@@ -277,6 +285,7 @@ async def execute_draft(ctx: Ctx, draft) -> Dict[str, Any]:
             media=payload.get("media") or None,
             community=payload.get("community"),
             action_context=context,
+            quote_tweet_url=payload.get("quote_tweet_url"),
         )
     if draft.action == "reply_to_tweet":
         return await exec_reply(

@@ -10,6 +10,15 @@ project follows [semantic versioning](https://semver.org/). See
 
 ## [Unreleased]
 
+### Added
+
+- `post_tweet` accepts `quote_tweet_url` to publish a quote post that carries
+  its own text and media. It opens X's quote composer from the exact target's
+  repost menu and stops before Post unless the composer shows the quoted
+  author. The quote target travels with the draft to `approve_draft` and joins
+  the dedup key only when set, so plain-post keys are unchanged. The legacy
+  Selenium backend refuses quote posts rather than posting without the quote.
+
 ### Changed
 
 - Python 3.11 is now the minimum. Python 3.10 reaches end of life this month,

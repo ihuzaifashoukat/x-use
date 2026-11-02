@@ -794,18 +794,27 @@ class XBrowser(ControlsMixin, NotificationsMixin, AnalyticsMixin, MessagingMixin
             return
         raise BrowserActionError("tweet_not_found")
 
-    async def _submit(self, text, composer, action, *, media=None, media_manifest=None, target=None, reply_snapshot=None, reply_route=None, submission_route=None):
+    async def _verify_quote_target(self, composer, author):
+        # X's quote composer renders the quoted post inside the dialog with its
+        # author's handle. Without it the post would go out as a plain post.
+        handles = composer.get_by_text(re.compile("^@" + re.escape(author) + "$", re.I), exact=True)
+        if await handles.count() < 1 or not await handles.first.is_visible():
+            raise BrowserActionError("tweet_not_found")
+
+    async def _submit(self, text, composer, action, *, media=None, media_manifest=None, target=None, reply_snapshot=None, reply_route=None, submission_route=None, quote_author=None):
         from .uploads import reviewed_uploads
         async with reviewed_uploads(media, media_manifest) as uploads:
             return await self._submit_prepared(text, composer, action, media=uploads, target=target,
                                                reply_snapshot=reply_snapshot, reply_route=reply_route,
-                                               submission_route=submission_route)
+                                               submission_route=submission_route, quote_author=quote_author)
 
-    async def _submit_prepared(self, text, composer, action, *, media=None, target=None, reply_snapshot=None, reply_route=None, submission_route=None):
+    async def _submit_prepared(self, text, composer, action, *, media=None, target=None, reply_snapshot=None, reply_route=None, submission_route=None, quote_author=None):
         if submission_route is not None and self.page.url != submission_route:
             raise BrowserActionError("unsupported_dom")
         if target is not None:
             await self._verify_reply_target(composer, target, reply_snapshot, reply_route)
+        if quote_author is not None:
+            await self._verify_quote_target(composer, quote_author)
         textbox = await self._wait_visible(composer.get_by_test_id("tweetTextarea_0"))
         if (await textbox.inner_text()).strip():
             raise BrowserActionError("composer_not_empty")
@@ -829,6 +838,8 @@ class XBrowser(ControlsMixin, NotificationsMixin, AnalyticsMixin, MessagingMixin
         before = await self._submission_baseline()
         if target is not None:
             await self._verify_reply_target(composer, target, reply_snapshot, reply_route)
+        if quote_author is not None:
+            await self._verify_quote_target(composer, quote_author)
         if reply_route is not None and self.page.url != reply_route:
             raise BrowserActionError("tweet_not_found")
         if submission_route is not None:
@@ -840,18 +851,7 @@ class XBrowser(ControlsMixin, NotificationsMixin, AnalyticsMixin, MessagingMixin
         await button.click()
         return await self._observe_submission(before, text, action, target)
 
-    @_safe("outcome_unknown")
-    async def post(self, text, media=None, community=None, media_manifest=None):
-        text = self._text(text)
-        if community is not None:
-            # Audience UI does not expose a stable numeric community identity.
-            # Refuse to publish publicly when the requested audience cannot be
-            # independently proven. No heuristic community-name substitution.
-            raise BrowserActionError("community_unverified")
-        await self.navigate("https://x.com/compose/tweet")
-        submission_route = self.page.url
-        if urlsplit(submission_route).path not in {"/compose/tweet", "/compose/post"}:
-            raise BrowserActionError("unsupported_dom")
+    async def _visible_composer(self):
         # The outer dialog can inherit hidden visibility while its nested
         # native composer overrides it. Bind to the one visible submit control
         # and its nearest dialog instead of the first accessible-role match.
@@ -864,7 +864,61 @@ class XBrowser(ControlsMixin, NotificationsMixin, AnalyticsMixin, MessagingMixin
             raise BrowserActionError("unsupported_dom")
         textboxes = composer.locator('[data-testid="tweetTextarea_0"]:visible')
         await self._wait_visible(textboxes)
-        if await textboxes.count() != 1 or self.page.url != submission_route:
+        if await textboxes.count() != 1:
+            raise BrowserActionError("unsupported_dom")
+        return composer
+
+    async def _open_quote_composer(self, url):
+        """Open X's quote composer from the exact target's repost menu."""
+        card, original, target = await self._target(url)
+        source_route = self.page.url
+        quoted = tweet_from_snapshot(original)
+        if quoted is None or not quoted.user_handle:
+            raise BrowserActionError("tweet_not_found")
+        if await self.page.locator('[data-testid="tweetButton"]:visible').count():
+            raise BrowserActionError("composer_not_empty")
+        # An already reposted target shows "unretweet"; its menu still offers Quote.
+        repost = card.locator('[data-testid="retweet"]:not(' + _QUOTED_DESCENDANTS + '), '
+                              '[data-testid="unretweet"]:not(' + _QUOTED_DESCENDANTS + ')')
+        button = await self._wait_visible(repost)
+        if await repost.count() != 1:
+            raise BrowserActionError("unsupported_dom")
+        await self._verify_action_target(card, target)
+        await button.click()
+        options = self.page.locator('[role="menuitem"][href*="/compose/"]:visible, '
+                                    '[role="menuitem"]:visible:has(a[href*="/compose/"])')
+        option = await self._wait_visible(options)
+        if await options.count() != 1:
+            raise BrowserActionError("unsupported_dom")
+        await self._verify_action_target(card, target)
+        await option.click()
+        composer = await self._visible_composer()
+        route = self.page.url
+        validate_x_url(route)
+        if route not in (source_route, "https://x.com/compose/post"):
+            raise BrowserActionError("tweet_not_found")
+        return composer, route, target, quoted.user_handle.removeprefix("@")
+
+    @_safe("outcome_unknown")
+    async def post(self, text, media=None, community=None, media_manifest=None, quote_tweet_url=None):
+        text = self._text(text)
+        if community is not None:
+            # Audience UI does not expose a stable numeric community identity.
+            # Refuse to publish publicly when the requested audience cannot be
+            # independently proven. No heuristic community-name substitution.
+            raise BrowserActionError("community_unverified")
+        if quote_tweet_url is not None:
+            composer, submission_route, target, author = await self._open_quote_composer(quote_tweet_url)
+            result = await self._submit(text, composer, "post", media=media, media_manifest=media_manifest,
+                                        submission_route=submission_route, quote_author=author)
+            result["evidence"]["quote_of"] = target
+            return result
+        await self.navigate("https://x.com/compose/tweet")
+        submission_route = self.page.url
+        if urlsplit(submission_route).path not in {"/compose/tweet", "/compose/post"}:
+            raise BrowserActionError("unsupported_dom")
+        composer = await self._visible_composer()
+        if self.page.url != submission_route:
             raise BrowserActionError("unsupported_dom")
         return await self._submit(text, composer, "post", media=media, media_manifest=media_manifest,
                                   submission_route=submission_route)
@@ -883,17 +937,7 @@ class XBrowser(ControlsMixin, NotificationsMixin, AnalyticsMixin, MessagingMixin
         await button.click()
         # X can nest a visible reply dialog inside a hidden outer dialog.
         # The modal submit control distinguishes it from the inline composer.
-        buttons = self.page.locator('[data-testid="tweetButton"]:visible')
-        await self._wait_visible(buttons)
-        if await buttons.count() != 1:
-            raise BrowserActionError("unsupported_dom")
-        composer = buttons.locator('xpath=ancestor::*[@role="dialog"][1]')
-        if await composer.count() != 1 or not await composer.is_visible():
-            raise BrowserActionError("unsupported_dom")
-        textboxes = composer.locator('[data-testid="tweetTextarea_0"]:visible')
-        await self._wait_visible(textboxes)
-        if await textboxes.count() != 1:
-            raise BrowserActionError("unsupported_dom")
+        composer = await self._visible_composer()
         reply_route = self.page.url
         validate_x_url(reply_route)
         if reply_route not in (source_route, "https://x.com/compose/post"):
