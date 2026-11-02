@@ -327,6 +327,20 @@ async def test_approved_quote_draft_reaches_the_async_browser_with_its_target(as
 
 
 @pytest.mark.asyncio
+async def test_quote_dedup_keys_on_the_tweet_id_not_the_url_spelling(async_server):
+    ctx = async_server.xuse_ctx
+    ctx.draft_mode = False
+    quoted = "https://x.com/person/status/123"
+    assert (await call_tool(async_server, "post_tweet",
+                            {"account": "acc1", "text": "my take", "quote_tweet_url": quoted}))["ok"]
+    # X's share button appends tracking parameters to the same permalink.
+    again = await call_tool(async_server, "post_tweet",
+                            {"account": "acc1", "text": "my take", "quote_tweet_url": quoted + "?s=46&t=abc"})
+    assert again["ok"] is False and again["error"]["reason"] == "already_executed"
+    assert ctx.session_pool.browser.calls == [("post", "my take", quoted)]
+
+
+@pytest.mark.asyncio
 async def test_pin_never_enters_policy_database_or_tool_result(async_server, monkeypatch):
     from itertools import count
     from uuid import UUID

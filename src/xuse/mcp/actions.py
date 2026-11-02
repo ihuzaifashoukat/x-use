@@ -58,9 +58,14 @@ async def exec_post(
     # key discriminates on the full payload. Keep byte-identical with
     # queue_tools.queue_post so the enqueue gate and this executor agree.
     # A quote target joins the key only when set, so plain-post keys are unchanged.
+    # Key on the tweet id, not the URL: a share link (?s=46&t=...) and the bare
+    # permalink quote the same post and must not both publish.
     key_material = (text or "") + "|" + str(media or []) + "|" + str(community)
     if quote_tweet_url:
-        key_material += "|" + quote_tweet_url
+        quote_id = ex.tweet_id_from_url(quote_tweet_url)
+        if not quote_id:
+            raise ToolError(f"Could not parse a tweet id from URL: {quote_tweet_url}")
+        key_material += "|quote:" + quote_id
     dedup_key = f"post_{account_id}_{hashlib.sha1(key_material.encode('utf-8')).hexdigest()[:12]}"
     if ex.is_processed(ctx, dedup_key):
         raise ToolError("An identical post was already executed for this account (dedup).", reason="already_executed")
