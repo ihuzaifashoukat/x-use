@@ -4,7 +4,7 @@
 #   docker build --target browser -t xuse-browser .
 # Both targets run as UID 10001. CI uses synthetic HTML and no X credentials.
 
-FROM python:3.14-slim-bookworm AS base
+FROM python:3.15-slim-bookworm AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
