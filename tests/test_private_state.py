@@ -89,7 +89,7 @@ def test_cookie_import_and_rollback_backup_are_owner_only(tmp_path, monkeypatch)
     live = config / "account_cookies.json"
     live.write_text("old export", encoding="utf-8")
     live.chmod(0o644)
-    _, rollback = accounts_tools._import_cookies("account", str(source))
+    _, rollback, _skipped = accounts_tools._import_cookies("account", str(source))
     assert stat.S_IMODE(live.stat().st_mode) == 0o600
     assert stat.S_IMODE(rollback.backup.stat().st_mode) == 0o600
     accounts_tools._discard_cookie_copy(rollback, "account")
@@ -181,14 +181,14 @@ def test_account_import_copies_validated_snapshot_when_source_changes(tmp_path, 
     source.write_text(content, encoding="utf-8")
     target = tmp_path / "config"
     monkeypatch.setattr(accounts_tools, "CONFIG_DIR", target)
-    original = accounts_tools.parse_cookie_export
+    original = accounts_tools.parse_cookie_export_report
     def change_after_validation(data):
         result = original(data)
         source.write_text("changed after validation", encoding="utf-8")
         return result
-    monkeypatch.setattr(accounts_tools, "parse_cookie_export", change_after_validation)
+    monkeypatch.setattr(accounts_tools, "parse_cookie_export_report", change_after_validation)
     accounts_tools._import_cookies("account", str(source))
-    assert json.loads((target / "account_cookies.json").read_text(encoding="utf-8")) == original(content.encode())
+    assert json.loads((target / "account_cookies.json").read_text(encoding="utf-8")) == original(content.encode()).cookies
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Real Windows file ACLs")

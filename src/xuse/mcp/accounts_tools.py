@@ -18,7 +18,7 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 from xuse.core.config_loader import CONFIG_DIR, PROJECT_ROOT
 from xuse.core.config_writer import AccountsConfigWriter, ConfigWriteError
 from xuse.core.local_state import private_state_file
-from xuse.browser.cookies import MAX_COOKIE_FILE_BYTES, parse_cookie_export
+from xuse.browser.cookies import MAX_COOKIE_FILE_BYTES, parse_cookie_export_report
 from xuse.browser.errors import SessionError
 
 from . import executor as ex
@@ -92,9 +92,10 @@ class _CookieRollback(NamedTuple):
     backup: Optional[Path]
 
 
-def _import_cookies(account_id: str, cookie_file: str, *, config_dir: Optional[Path] = None) -> Tuple[str, Optional[_CookieRollback]]:
+def _import_cookies(account_id: str, cookie_file: str, *, config_dir: Optional[Path] = None) -> Tuple[str, Optional[_CookieRollback], List[Dict[str, str]]]:
     """Validate and atomically import cookies beside the selected accounts file.
-    Returns (cookie_file_path, rollback token). Custom homes use absolute paths
+    Returns (cookie_file_path, rollback token, skipped cookies as
+    name/rule pairs). Custom homes use absolute paths
     so legacy and async backends resolve the same file. Even an export
     already at the destination is normalized through a private temporary file
     and backed up, so all backends receive the same cookie-array format."""
@@ -106,9 +107,16 @@ def _import_cookies(account_id: str, cookie_file: str, *, config_dir: Optional[P
     try:
         with src.open("rb") as stream:
             contents = stream.read(MAX_COOKIE_FILE_BYTES + 1)
-        data = parse_cookie_export(contents)
-    except (OSError, SessionError):
+        report = parse_cookie_export_report(contents)
+    except OSError:
         raise ToolError("Cookie file failed validation: export secure, unexpired x.com cookies including auth_token and ct0.") from None
+    except SessionError as exc:
+        message = "Cookie file failed validation: export secure, unexpired x.com cookies including auth_token and ct0."
+        if exc.detail:
+            message += f" ({exc.detail})"
+        raise ToolError(message) from None
+    data = report.cookies
+    skipped = [{"name": name, "rule": rule} for name, rule in report.skipped]
     try:
         normalized = (json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     except UnicodeError:
@@ -156,7 +164,7 @@ def _import_cookies(account_id: str, cookie_file: str, *, config_dir: Optional[P
         raise ToolError("Cookie import could not be saved; the existing cookie file was not replaced.") from None
     logger.info("Imported cookies for account '%s' to %s.", account_id, dest)
     stored_path = f"config/{account_id}_cookies.json" if dest.parent == CONFIG_DIR.resolve() else str(dest)
-    return stored_path, _CookieRollback(dest, backup)
+    return stored_path, _CookieRollback(dest, backup), skipped
 
 
 def _discard_cookie_copy(rollback: Optional[_CookieRollback], account_id: str) -> None:
@@ -226,8 +234,9 @@ def register_account_tools(server, ctx: Ctx) -> None:
                 raise ToolError(f"Account '{account_id}' already exists.")
         cookie_rel: Optional[str] = None
         cookie_copied: Optional[_CookieRollback] = None
+        skipped_cookies: List[Dict[str, str]] = []
         if cookie_file:
-            cookie_rel, cookie_copied = _import_cookies(account_id, cookie_file,
+            cookie_rel, cookie_copied, skipped_cookies = _import_cookies(account_id, cookie_file,
                 config_dir=Path(ctx.config_loader.accounts_file).parent)
         entry: Dict[str, Any] = {
             "account_id": account_id,
@@ -247,9 +256,10 @@ def register_account_tools(server, ctx: Ctx) -> None:
             raise ToolError(str(e)) from e
         _commit_cookie_copy(cookie_copied)
         _refresh(ctx, updated)
+        extra = {"skipped_cookies": skipped_cookies} if skipped_cookies else {}
         return ok_(account=ex.mask_account(entry),
                    message=f"Account '{account_id}' added. Previous accounts.json "
-                           "is backed up in config/backups/.")
+                           "is backed up in config/backups/.", **extra)
 
     @server.tool(annotations=LOCAL_WRITE_IDEMPOTENT)
     @guard
@@ -270,8 +280,9 @@ def register_account_tools(server, ctx: Ctx) -> None:
         _known_account(ctx, account)
         cookie_rel: Optional[str] = None
         cookie_copied: Optional[_CookieRollback] = None
+        skipped_cookies: List[Dict[str, str]] = []
         if cookie_file:
-            cookie_rel, cookie_copied = _import_cookies(account, cookie_file,
+            cookie_rel, cookie_copied, skipped_cookies = _import_cookies(account, cookie_file,
                 config_dir=Path(ctx.config_loader.accounts_file).parent)
 
         def _apply(accounts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -314,8 +325,9 @@ def register_account_tools(server, ctx: Ctx) -> None:
         _commit_cookie_copy(cookie_copied)
         _refresh(ctx, updated)
         await _close_after_config_change(ctx, account)
+        extra = {"skipped_cookies": skipped_cookies} if skipped_cookies else {}
         return ok_(account=ex.mask_account(_known_account(ctx, account)),
-                   message=f"Account '{account}' updated; warm session closed.")
+                   message=f"Account '{account}' updated; warm session closed.", **extra)
 
     @server.tool(annotations=LOCAL_WRITE_IDEMPOTENT)
     @guard

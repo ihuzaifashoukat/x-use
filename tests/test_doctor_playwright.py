@@ -230,7 +230,7 @@ def test_strict_cookie_expiry_missing_inline_empty_and_legacy_backend(make_confi
     loader = make_config_loader(accounts=accounts)
     checks = doctor._check_mcp_cookies(loader, accounts, {})
     assert len(checks) == 3 and all(check.status == "FAIL" for check in checks)
-    assert checks[0].detail == "authentication cookies have expired"
+    assert checks[0].detail == "authentication cookies have expired (auth_token: expired)"
     assert "missing" in checks[1].detail
     assert "PRIVATE_COOKIE_SENTINEL" not in repr(checks)
     skipped = doctor._check_mcp_cookies(loader, accounts, {"mcp": {"browser_backend": "selenium"}})
@@ -244,3 +244,23 @@ def test_cookie_helper_legacy_api_keeps_permissive_historical_semantics(make_con
     loader = make_config_loader(accounts=[account])
     checks = doctor._check_cookies([account], include_mcp=True, loader=loader, settings={})
     assert checks[0].status == "PASS" and checks[1].status == "FAIL"
+
+
+def test_doctor_pass_lists_skipped_optional_cookies_without_values(make_config_loader):
+    payload = credentials() + [dict(name="lang", value="PRIVATE_COOKIE_SENTINEL", domain=".x.com",
+                                    path="/", secure=True) for _ in range(2)]
+    loader = make_config_loader(accounts=[{"account_id": "a", "cookies": payload}])
+    checks = doctor._check_mcp_cookies(loader, loader.accounts, {})
+    assert checks[0].status == "PASS"
+    assert "skipped 1 optional cookie(s): lang (duplicate)" in checks[0].detail
+    assert "PRIVATE_COOKIE_SENTINEL" not in repr(checks)
+
+
+def test_doctor_fail_names_credential_and_rule(make_config_loader):
+    payload = credentials()
+    payload[1]["secure"] = False
+    loader = make_config_loader(accounts=[{"account_id": "a", "cookies": payload}])
+    checks = doctor._check_mcp_cookies(loader, loader.accounts, {})
+    assert checks[0].status == "FAIL"
+    assert "ct0: insecure" in checks[0].detail
+    assert "PRIVATE_COOKIE_SENTINEL" not in repr(checks)

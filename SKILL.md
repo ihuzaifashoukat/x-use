@@ -129,6 +129,8 @@ Then walk the user through the cookie export, which is how x-use authenticates:
 3. Open the extension while on x.com and export as JSON.
 4. Save the file on this machine and give you the **path**.
 
+Only `auth_token` and `ct0` are required; unusable optional cookies are skipped, and `x-use doctor` lists them by name and reason.
+
 ```
 add_account(account_id="main", cookie_file="/path/to/cookies.json")
 ```

@@ -15,7 +15,8 @@ import typer
 
 import xuse.init_wizard as wizard
 
-VALID_COOKIES = [{"name": "auth_token", "value": "x"}, {"name": "ct0", "value": "y"}]
+VALID_COOKIES = [{"name": n, "value": "x", "domain": ".x.com", "path": "/", "secure": True}
+                 for n in ("auth_token", "ct0")]
 
 
 @pytest.fixture
@@ -238,3 +239,49 @@ def test_installed_fallback_creates_private_inactive_config_and_preserves_rerun(
     original = [path.read_bytes() for path in (settings_path, accounts_path)]
     wizard.run_wizard()
     assert [path.read_bytes() for path in (settings_path, accounts_path)] == original
+
+
+# --- issue #38: strict validation with skipped-cookie reporting ----------------
+
+
+def _export(tmp_path, cookies):
+    src = tmp_path / "export.json"
+    src.write_text(json.dumps(cookies), encoding="utf-8")
+    return src
+
+
+def test_import_warns_about_skipped_optional_cookies_without_prompting(
+        isolated_config, tmp_path, monkeypatch, capsys):
+    bad = {"name": "gt", "value": "SECRET-VALUE", "domain": ".x.com", "path": "/",
+           "secure": False, "sameSite": "no_restriction"}
+    src = _export(tmp_path, VALID_COOKIES + [bad])
+    monkeypatch.setattr(typer, "prompt", lambda *a, **k: str(src))
+
+    def no_confirm(*a, **k):  # pragma: no cover - must not be reached
+        raise AssertionError("skipped optional cookies must not prompt")
+
+    monkeypatch.setattr(typer, "confirm", no_confirm)
+    rel = wizard._import_cookies("acc")
+    out = capsys.readouterr()
+    assert rel == "config/acc_cookies.json"
+    assert "gt (insecure_same_site_none)" in out.out + out.err
+    assert "SECRET-VALUE" not in out.out + out.err
+    assert (isolated_config / "acc_cookies.json").read_bytes() == src.read_bytes()
+
+
+def test_import_credential_failure_shows_reason_and_detail_then_prompts(
+        isolated_config, tmp_path, monkeypatch, capsys):
+    cookies = [dict(c, value="SECRET-VALUE") for c in VALID_COOKIES]
+    cookies[1]["secure"] = False
+    src = _export(tmp_path, cookies)
+    monkeypatch.setattr(typer, "prompt", lambda *a, **k: str(src))
+    asked = []
+    monkeypatch.setattr(typer, "confirm", lambda *a, **k: asked.append(a[0]) or False)
+    rel = wizard._import_cookies("acc")
+    out = capsys.readouterr()
+    assert rel == "config/acc_cookies.json"
+    assert asked == ["Import it anyway?"]
+    assert "invalid_cookies" in out.out + out.err
+    assert "ct0: insecure" in out.out + out.err
+    assert "SECRET-VALUE" not in out.out + out.err
+    assert not (isolated_config / "acc_cookies.json").exists()
