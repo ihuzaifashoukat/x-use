@@ -2,7 +2,7 @@
 
 > x-use is an open-source Python MCP server and CLI for X (Twitter). It uses the operator's authenticated browser session for profile and post research, inbox reads, and reviewed publishing and outreach. It runs locally with Patchright Chromium and does not require official X API credentials.
 
-Version 3.2.0 has 82 tools, seven prompts, four read-only resource patterns and seven bundled agent skills, built on the MCP Python SDK v2 line. 3.1.0 added runtime diagnostics, campaign previews, bookmarks, reviewed post edit/delete and inbox controls to the 70 tools in 3.0.0. The package-name x-use-mcp command starts MCP directly for registry clients. This file is an optional documentation map for agents, not a search-ranking mechanism.
+Version 3.3.0 has 82 tools, seven prompts, four read-only resource patterns and seven bundled agent skills, built on the MCP Python SDK v2 line. 3.3.0 adds quote posts to post_tweet, strict-but-forgiving cookie import and Playwright 1.65 support, and requires Python 3.11.5 or newer. 3.1.0 added runtime diagnostics, campaign previews, bookmarks, reviewed post edit/delete and inbox controls to the 70 tools in 3.0.0. The package-name x-use-mcp command starts MCP directly for registry clients. This file is an optional documentation map for agents, not a search-ranking mechanism.
 
 The package name is `x-use-mcp`; the MCP Registry name is `io.github.ihuzaifashoukat/x-use`. The license is MIT. Install or upgrade with `python -m pip install --upgrade x-use-mcp`, then install the matching browser with `python -m patchright install chromium`.
 

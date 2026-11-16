@@ -10,6 +10,13 @@ project follows [semantic versioning](https://semver.org/). See
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-11-16
+
+Quote posts, a cookie import that tolerates full Cookie-Editor exports, Playwright
+1.65 support and security updates. The 82 tools and their schemas are unchanged
+apart from the new optional `quote_tweet_url` argument on `post_tweet`.
+Python 3.11.5 or newer is now required.
+
 ### Added
 
 - `post_tweet` accepts `quote_tweet_url` to publish a quote post that carries
@@ -50,6 +57,10 @@ project follows [semantic versioning](https://semver.org/). See
 
 - Pillow 13.0 and certifi 2026.10.23 clear the advisories that were failing the
   dependency-advisory CI job.
+- soupsieve 4.0 (GHSA-mmhr-3c5m-f64f, GHSA-7g44-g9rc-x53w, GHSA-6655-6qjp-jx7x)
+  and opentelemetry-api 1.45.2 (GHSA-mf5v-w3w3-f6cg) clear the remaining
+  dependency advisories. Playwright 1.65.1, openai 3.50, typer 0.29 and
+  pytest-asyncio 1.5 are refreshed in the lock.
 
 ## [3.2.0] - 2026-10-13
 
@@ -580,7 +591,8 @@ CLI.
 
 - `python src/main.py` still works, with a warning pointing to `x-use run`.
 
-[Unreleased]: https://github.com/ihuzaifashoukat/x-use/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/ihuzaifashoukat/x-use/compare/v3.3.0...HEAD
+[3.3.0]: https://github.com/ihuzaifashoukat/x-use/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/ihuzaifashoukat/x-use/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/ihuzaifashoukat/x-use/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/ihuzaifashoukat/x-use/compare/v2.4.1...v3.0.0

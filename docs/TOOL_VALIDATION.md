@@ -1,6 +1,6 @@
 # MCP tool validation matrix
 
-Version **3.2.0** has **82 tools**, the same set as 3.1.0. See the
+Version **3.3.0** has **82 tools**, the same set as 3.1.0. See the
 [browser and account hardening](PATCHRIGHT_HARDENING.md) for the latest browser, cookie, proxy and health
 validation, [parallel upgrade validation](PARALLEL_UPGRADE_VALIDATION.md) for
 the preceding per-tool evidence, and [controls](CONTROLS.md) for the
