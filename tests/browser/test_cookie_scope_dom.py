@@ -93,7 +93,8 @@ async def test_native_cookie_expiration_round_trip(cookie_context, mode):
 
 
 async def test_native_rejected_import_does_not_partially_inject_credentials(cookie_context):
-    payload = credentials() + [{"name": "invalid-last-entry", "value": "synthetic", "domain": "x.com.evil.invalid"}]
+    payload = credentials()
+    payload[1]["domain"] = "x.com.evil.invalid"
     with pytest.raises(SessionError, match="invalid_cookies"):
         await cookie_context.add_cookies(normalize_cookies(payload))
     assert await cookie_context.cookies() == []
