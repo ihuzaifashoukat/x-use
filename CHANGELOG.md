@@ -37,8 +37,6 @@ project follows [semantic versioning](https://semver.org/). See
   supported now. If neither is found, startup stops with an operator hint
   instead of running a browser x-use cannot track.
 
-### Fixed
-
 - A Cookie-Editor export no longer passes `x-use init` and then fails `x-use doctor`
   and the MCP runtime (#38). Unusable optional cookies (for example insecure
   `no_restriction`, partitioned or duplicated ones) are skipped and reported by
