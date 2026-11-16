@@ -995,6 +995,95 @@ async def test_start_cancelled_during_driver_capture_waits_for_owned_handles(mak
         await pool.close_all()
 
 
+def _legacy_driver_layout(process):
+    # Playwright <= 1.64 and Patchright: transport lives on the connection.
+    from types import SimpleNamespace
+    return SimpleNamespace(_impl_obj=SimpleNamespace(
+        _connection=SimpleNamespace(_transport=SimpleNamespace(_proc=process))))
+
+
+def _client_driver_layout(process):
+    # Playwright >= 1.65: transport lives on PlaywrightClient, owned by the
+    # context manager whose __aexit__ is installed as the runtime's stop().
+    from types import SimpleNamespace
+
+    class Manager:
+        def __init__(self):
+            self._client = SimpleNamespace(_transport=SimpleNamespace(_proc=process))
+
+        async def __aexit__(self, *args):
+            return None
+
+    runtime = SimpleNamespace(_impl_obj=SimpleNamespace(_connection=SimpleNamespace()))
+    runtime.stop = Manager().__aexit__
+    return runtime
+
+
+@pytest.mark.parametrize("layout", (_legacy_driver_layout, _client_driver_layout), ids=("legacy", "client"))
+def test_driver_process_resolves_supported_private_layouts(layout):
+    from types import SimpleNamespace
+    from xuse.browser.sessions import _driver_process
+    process = SimpleNamespace(pid=10, returncode=None)
+    assert _driver_process(layout(process)) is process
+
+
+def test_driver_process_rejects_unknown_layouts():
+    from types import SimpleNamespace
+    from xuse.browser.sessions import _driver_process
+    assert _driver_process(FakeRuntime()) is None
+    assert _driver_process(SimpleNamespace(_impl_obj=SimpleNamespace(_connection=SimpleNamespace()))) is None
+    # A transport that has not spawned its driver yet carries no process.
+    assert _driver_process(_legacy_driver_layout(None)) is None
+    assert _driver_process(_legacy_driver_layout(SimpleNamespace(pid="10"))) is None
+
+
+@pytest.mark.asyncio
+async def test_unrecognized_driver_layout_fails_closed_and_stops_runtime(make_pool):
+    from types import SimpleNamespace
+    pool, runtime = make_pool()
+    # A real runtime (it has _impl_obj) whose driver process cannot be found
+    # must not launch an untracked authenticated browser.
+    runtime._impl_obj = SimpleNamespace(_connection=SimpleNamespace())
+    try:
+        with pytest.raises(SessionError) as error:
+            await pool.acquire("a")
+        assert error.value.reason == "startup_failed"
+        assert "process ownership tracking" in error.value.operator_hint
+        assert runtime.launches == 0 and runtime.stopped
+    finally:
+        await pool.close_all()
+
+
+@pytest.mark.asyncio
+async def test_start_captures_driver_from_client_owned_transport(make_pool, monkeypatch):
+    import os
+    from types import SimpleNamespace
+    import xuse.browser.sessions
+    pool, runtime = make_pool()
+    inspector = GuardInspector()
+    inspector.rows[10] = (os.getpid(), 100)
+    monkeypatch.setattr(xuse.browser.sessions, "_ProcessInspector", lambda: inspector)
+    fake_stop = runtime.stop
+
+    class Manager:
+        _client = SimpleNamespace(_transport=SimpleNamespace(_proc=SimpleNamespace(pid=10, returncode=None)))
+
+        async def __aexit__(self, *args):
+            await fake_stop()
+
+    # Playwright 1.65 has no transport on the connection and installs the
+    # context manager's bound __aexit__ as the runtime's stop().
+    runtime._impl_obj = SimpleNamespace(_connection=SimpleNamespace())
+    runtime.stop = Manager().__aexit__
+    try:
+        await pool.acquire("a")
+        assert runtime.launches == 1
+        assert pool._process_guard is not None and 10 in pool._process_guard.processes
+    finally:
+        await pool.close_all()
+    assert runtime.stopped
+
+
 @pytest.mark.asyncio
 async def test_original_browser_block_is_preserved_when_process_drain_cannot_finish(make_pool, monkeypatch):
     pool, runtime = make_pool()

@@ -435,6 +435,31 @@ class SessionEntry:
         self.last_used = time.monotonic()
 
 
+def _driver_process(runtime) -> Any:
+    """Return the asyncio subprocess of a started Playwright/Patchright driver.
+
+    Neither library exposes the driver process publicly, so this probes the
+    known private layouts and returns None when none of them matches:
+
+    - Playwright <= 1.64 and Patchright keep the pipe transport on the
+      connection: ``runtime._impl_obj._connection._transport._proc``.
+    - Playwright >= 1.65 keeps it on the ``PlaywrightClient`` owned by the
+      context manager whose ``__aexit__`` is installed as ``runtime.stop``:
+      ``runtime.stop.__self__._client._transport._proc``.
+    """
+    impl = getattr(runtime, "_impl_obj", None)
+    candidates = (
+        getattr(getattr(impl, "_connection", None), "_transport", None),
+        getattr(getattr(getattr(getattr(runtime, "stop", None), "__self__", None),
+                        "_client", None), "_transport", None),
+    )
+    for transport in candidates:
+        process = getattr(transport, "_proc", None)
+        if process is not None and isinstance(getattr(process, "pid", None), int):
+            return process
+    return None
+
+
 def _positive_seconds(value: float) -> float:
     value = float(value)
     if not math.isfinite(value) or value <= 0:
@@ -1104,7 +1129,15 @@ class PlaywrightSessionPool:
         impl = getattr(runtime, "_impl_obj", None)
         if impl is None and self._factory is not None:
             return  # Explicit fake-runtime seam.
-        process = impl._connection._transport._proc
+        process = _driver_process(runtime)
+        if process is None:
+            # Ownership tracking is what makes idle reclamation and shutdown
+            # safe. Refuse to run an untracked authenticated browser.
+            error = SessionError("startup_failed")
+            error.operator_hint = (
+                f"The installed {self.backend} driver layout is not supported for process "
+                "ownership tracking. Install a supported version and restart the MCP server.")
+            raise error
         inspector = _ProcessInspector()
 
         def capture():

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from xuse.browser.sessions import AccountOwnerLock, PatchrightSessionPool, PlaywrightSessionPool, SessionEntry
+from xuse.browser.sessions import AccountOwnerLock, PatchrightSessionPool, PlaywrightSessionPool, SessionEntry, _driver_process
 
 
 @pytest.mark.asyncio
@@ -47,7 +47,7 @@ async def test_native_idle_reclamation_drains_owned_processes_and_reopens(driver
         guard = pool._process_guard
         assert guard is not None
         inspector = guard.inspector
-        driver_process = pool._runtime._impl_obj._connection._transport._proc
+        driver_process = _driver_process(pool._runtime)
         for process in guard.processes.values():
             try:
                 pins.append(inspector.pin(process.pid, process.birth, inspector.cutoff()))
@@ -71,7 +71,7 @@ async def test_native_idle_reclamation_drains_owned_processes_and_reopens(driver
         pool.idle_timeout_seconds = 100
         fresh = await pool._get_browser()
         assert fresh is not browser and fresh.is_connected()
-        assert pool._runtime._impl_obj._connection._transport._proc is not driver_process
+        assert _driver_process(pool._runtime) is not driver_process
         fresh_context = await fresh.new_context(service_workers="block")
         await fresh_context.route("**/*", lambda route: route.abort())
         fresh_page = await fresh_context.new_page()

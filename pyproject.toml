@@ -9,7 +9,7 @@ name = "x-use-mcp"
 dynamic = ["version"]
 description = "MCP server for X (Twitter): browser research, inbox reads and reviewed publishing. No X API key required."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11.5"
 license = "MIT"
 authors = [
     {name = "Huzaifa Shoukat"},

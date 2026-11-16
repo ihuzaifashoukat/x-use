@@ -96,16 +96,17 @@ def test_one_command_bootstraps_uv_and_runtime_with_safe_paths_and_no_admin(monk
     assert json.loads((project / "config/settings.json").read_text(encoding="utf-8")) == setup_uv.DEFAULT_SETTINGS
 
 
-@pytest.mark.parametrize("version", [(3, 11), (3, 12), (3, 13), (3, 14)])
+@pytest.mark.parametrize("version", [(3, 11, 5), (3, 11, 14), (3, 12, 0), (3, 13, 0), (3, 14, 0), (3, 14, 9)])
 def test_fresh_setup_prefers_validated_caller_python(monkeypatch, version, tmp_path):
-    monkeypatch.setattr(setup_uv.sys, "version_info", (*version, 0))
+    monkeypatch.setattr(setup_uv.sys, "version_info", version)
     monkeypatch.setattr(setup_uv.sys, "executable", "C:/Python/python.exe")
     assert setup_uv._python_target(None, tmp_path / ".venv/Scripts/python.exe") == "C:/Python/python.exe"
 
 
-@pytest.mark.parametrize("version", [(3, 9), (3, 10), (3, 15), (4, 0)])
+# 3.11.0-3.11.4 cannot install the patched soupsieve that requires-python demands.
+@pytest.mark.parametrize("version", [(3, 9, 0), (3, 10, 0), (3, 11, 0), (3, 11, 4), (3, 15, 0), (4, 0, 0)])
 def test_fresh_setup_falls_back_to_supported_python_for_unvalidated_caller(monkeypatch, version, tmp_path):
-    monkeypatch.setattr(setup_uv.sys, "version_info", (*version, 0))
+    monkeypatch.setattr(setup_uv.sys, "version_info", version)
     monkeypatch.setattr(setup_uv.sys, "executable", "C:/Python/python.exe")
     assert setup_uv._python_target(None, tmp_path / ".venv/Scripts/python.exe") == "3.12"
 
