@@ -1,6 +1,6 @@
 # Architecture
 
-x-use 3.2.0 exposes browser-native X workflows through an MCP stdio server.
+x-use 3.3.0 exposes browser-native X workflows through an MCP stdio server.
 The current runtime uses async Patchright Chromium. The Selenium batch engine
 remains an explicitly selected compatibility path. Both use the same account
 configuration, but they do not have identical capabilities or policy boundaries.

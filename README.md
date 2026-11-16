@@ -29,7 +29,7 @@ Your AI client supplies the reasoning and text. An optional OpenAI-compatible LL
 
 Requires Python 3.11.5+ and Chromium. The CI matrix covers Python 3.11–3.14 on Windows, macOS and Linux.
 
-**Version 3.2.0 provides 82 tools** for research, inbox management, reviewed publishing and account operations. Upgrade the package and restart your MCP client to load the current tools.
+**Version 3.3.0 provides 82 tools** for research, inbox management, reviewed publishing and account operations. Upgrade the package and restart your MCP client to load the current tools.
 
 ### 1. Install the server and browser
 
@@ -124,12 +124,12 @@ The [Claude Code plugin](https://github.com/ihuzaifashoukat/x-use/blob/main/plug
 | Account readiness (3.1.0) | `get_account_health`, `get_session_status`, `test_proxy` | [Operational score, evidence and recovery advice](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/ACCOUNT_HEALTH.md), plus explicit proxy connectivity checks |
 | Scheduling and recovery | `queue_post`, `process_queue`, `get_account_health`, `resolve_action_outcome` | Durable budgets, explicit recovery and uncertain-outcome tracking |
 
-**Version 3.2.0 includes 82 tools, seven prompts, four resource patterns and seven bundled skills.** 3.1.0 added runtime diagnostics, campaign previews, bookmarks, reviewed post edits/deletions, engagement reversal and inbox controls to the 70 tools in 3.0.0; 3.2.0 keeps the same tools on the MCP Python SDK v2 line. See [publishing and inbox controls](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/CONTROLS.md) for supported layouts and testing limits.
+**Version 3.3.0 includes 82 tools, seven prompts, four resource patterns and seven bundled skills.** 3.1.0 added runtime diagnostics, campaign previews, bookmarks, reviewed post edits/deletions, engagement reversal and inbox controls to the 70 tools in 3.0.0; 3.3.0 adds quote posts to `post_tweet` and keeps the same tool set. See [publishing and inbox controls](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/CONTROLS.md) for supported layouts and testing limits.
 
 The [MCP guide](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/MCP_GUIDE.md) documents every tool, prompt and resource. [Validation evidence](https://github.com/ihuzaifashoukat/x-use/blob/main/docs/TOOL_VALIDATION.md) separates local protocol checks, synthetic browser fixtures and authorized live-account checks.
 
 For a uvx client, use `uvx x-use-mcp` or pin the release with
-`uvx x-use-mcp==3.2.0`. The `x-use-mcp` executable starts MCP without arguments;
+`uvx x-use-mcp==3.3.0`. The `x-use-mcp` executable starts MCP without arguments;
 the existing `x-use mcp` command remains supported. Clients pinned to 3.0.0
 must use `uvx --from x-use-mcp==3.0.0 x-use mcp`.
 
