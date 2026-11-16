@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from xuse.browser.sessions import AccountOwnerLock, PatchrightSessionPool, PlaywrightSessionPool, SessionEntry, _OwnedBrowserProcesses, _ProcessInspector
+from xuse.browser.sessions import AccountOwnerLock, PatchrightSessionPool, PlaywrightSessionPool, SessionEntry, _OwnedBrowserProcesses, _ProcessInspector, _driver_process
 
 
 def verified_descendant_pids(rows, driver_pid):
@@ -156,7 +156,7 @@ async def test_native_synthetic_cleanup_drains_owned_processes(driver, failure, 
         # Match production's narrow private-transport seam: capture the driver
         # PID, then independently pin OS identities to verify public API and
         # owned Job/process-handle cleanup without relying on PID reuse.
-        process = pool._runtime._impl_obj._connection._transport._proc
+        process = _driver_process(pool._runtime)
         guard = pool._process_guard
         assert guard is not None and guard.job is not None
         kernel, handles, identities = owned_process_handles(process.pid, guard.job)

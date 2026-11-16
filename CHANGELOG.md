@@ -24,6 +24,18 @@ project follows [semantic versioning](https://semver.org/). See
 - Python 3.11 is now the minimum. Python 3.10 reaches end of life this month,
   and the Pillow 13 security release that fixes the open Pillow advisories
   requires 3.11. The CI matrix, installers and setup script follow the new floor.
+- The exact floor is Python 3.11.5. Every patched soupsieve release requires it,
+  and below it the universal lock fell back to a 2018 beautifulsoup4.
+  `scripts/setup_uv.py` uses Python 3.12 instead of a 3.11.0-3.11.4 caller.
+
+### Fixed
+
+- Browser startup works with Playwright 1.65, which moved its driver process
+  from the connection to the client. x-use tracks the driver process to clean
+  up the authenticated browser, so 1.65 crashed at startup with
+  `'Connection' object has no attribute '_transport'`. Both driver layouts are
+  supported now. If neither is found, startup stops with an operator hint
+  instead of running a browser x-use cannot track.
 
 ### Security
 
