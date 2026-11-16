@@ -264,3 +264,34 @@ def test_doctor_fail_names_credential_and_rule(make_config_loader):
     assert checks[0].status == "FAIL"
     assert "ct0: insecure" in checks[0].detail
     assert "PRIVATE_COOKIE_SENTINEL" not in repr(checks)
+
+
+def _foreign_cookies(count):
+    return [dict(name=f"foreign{i}", value="PRIVATE_COOKIE_SENTINEL", domain=".example.com",
+                 path="/", secure=True) for i in range(count)]
+
+
+def test_doctor_bounds_skipped_cookie_list(make_config_loader):
+    payload = credentials() + _foreign_cookies(25)
+    loader = make_config_loader(accounts=[{"account_id": "a", "cookies": payload}])
+    checks = doctor._check_mcp_cookies(loader, loader.accounts, {})
+    assert checks[0].status == "PASS"
+    assert "skipped 25 optional cookie(s)" in checks[0].detail
+    assert "and 15 more" in checks[0].detail
+    assert "foreign9" in checks[0].detail and "foreign10" not in checks[0].detail
+
+
+def test_doctor_does_not_echo_detail_from_non_session_errors(make_config_loader, monkeypatch):
+    import xuse.browser.cookies as cookies_mod
+
+    class Foreign(Exception):
+        detail = "PRIVATE_COOKIE_SENTINEL"
+
+    def boom(*_a, **_k):
+        raise Foreign()
+
+    monkeypatch.setattr(cookies_mod, "load_account_cookies_report", boom)
+    loader = make_config_loader(accounts=[{"account_id": "a", "cookies": credentials()}])
+    checks = doctor._check_mcp_cookies(loader, loader.accounts, {})
+    assert checks[0].status == "FAIL"
+    assert "PRIVATE_COOKIE_SENTINEL" not in repr(checks)

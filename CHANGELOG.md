@@ -44,7 +44,9 @@ project follows [semantic versioning](https://semver.org/). See
   `no_restriction`, partitioned or duplicated ones) are skipped and reported by
   name and rule in `init`, `doctor` and the `import_cookies` result, never by
   value. Only `auth_token` and `ct0` are required, and a failure on either now
-  names the cookie and the rule it broke.
+  names the cookie and the rule it broke. `x-use init` now applies the same strict
+  rules as doctor and MCP, so a minimal export missing `secure` on `auth_token`/`ct0`
+  now warns and asks before importing.
 
 ### Security
 

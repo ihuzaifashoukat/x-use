@@ -27,7 +27,7 @@ flowchart TD
 | Module | Responsibility |
 |---|---|
 | `xuse/browser/sessions.py` | One Chromium process per server; lazy isolated contexts, bounded capacity, account locks, cancellation cleanup and idle reaping. |
-| `xuse/browser/cookies.py` | Strict X-domain cookie import. Rejects malformed or ambiguous authentication cookies without printing values. |
+| `xuse/browser/cookies.py` | Strict X-domain cookie import. Rejects malformed or ambiguous authentication cookies without printing values; unusable optional cookies are skipped and reported by name and rule. |
 | `xuse/browser/page.py` | Native async locators, public profile/feed/search reads, exact post matching, and single-attempt writes with observed evidence. |
 | `xuse/browser/messaging.py` | Partial visible inbox/history reads, exact recipient checks, one-shot sends and explicit PIN unlock. |
 | `xuse/browser/analytics.py` | Verified owner analytics availability through the observed Creator Studio UI; the Premium gate returns no fabricated metrics. |
@@ -94,7 +94,7 @@ Alternatively, use installed Chrome or Edge by setting `mcp.browser_channel` to 
 Async cookie files may be a JSON array, a `cookies` envelope or a Playwright
 storage-state export. Only cookies are loaded; origin storage and IndexedDB are
 ignored. Duplicate JSON keys, ambiguous scopes, unsupported cookie partitions and
-conflicting expiry aliases are rejected. Imports are bounded to 1 MiB. Account
+conflicting expiry aliases are rejected for `auth_token` and `ct0`; for optional cookies these problems skip the cookie, reported by name and rule, while file-level problems still reject the file. Imports are bounded to 1 MiB. Account
 add/update stores a normalized cookie array through a private temporary file and
 atomic replacement, including when source and destination are the same file. If
 the account configuration update fails, the previous file is restored. Browser

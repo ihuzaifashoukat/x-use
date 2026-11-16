@@ -22,7 +22,7 @@ from xuse.core.config_loader import (
     PROJECT_ROOT,
     normalize_account_dict as _normalize_account_dict,
 )
-from xuse.browser.cookies import parse_cookie_export_report
+from xuse.browser.cookies import parse_cookie_export_report, summarize_skipped
 from xuse.browser.errors import SessionError
 from xuse.core.local_state import private_state_file
 from xuse.models import AccountConfig
@@ -224,7 +224,7 @@ def _import_cookies(account_id: str) -> str:
             return cookie_rel
     else:
         if report.skipped:
-            listed = ", ".join(f"{name} ({rule})" for name, rule in report.skipped)
+            listed = summarize_skipped(report.skipped, 10)
             typer.secho(f"Warning: skipping {len(report.skipped)} optional cookie(s) that "
                         f"x-use cannot use: {listed}", fg=typer.colors.YELLOW)
     dest = CONFIG_DIR / f"{account_id}_cookies.json"

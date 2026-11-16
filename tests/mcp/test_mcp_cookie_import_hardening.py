@@ -121,3 +121,15 @@ def test_failure_message_includes_safe_detail_without_values(paths):
     assert "ct0: insecure" in str(error.value)
     assert "SECRET-VALUE" not in str(error.value)
     assert not dest.exists()
+
+
+def test_skipped_list_is_bounded_with_true_count(paths):
+    source, _dest = paths
+    extra = [{"name": f"f{i}", "value": "v", "secure": True, "domain": ".example.com"} for i in range(25)]
+    source.write_text(json.dumps(cookies() + extra))
+    _relative, rollback, skipped = accounts_tools._import_cookies("account", str(source))
+    assert len(skipped) == 25
+    extra_fields = accounts_tools._skipped_result(skipped)
+    assert len(extra_fields["skipped_cookies"]) == 20
+    assert extra_fields["skipped_cookie_count"] == 25
+    assert accounts_tools._skipped_result([]) == {}

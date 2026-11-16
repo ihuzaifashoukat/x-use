@@ -36,6 +36,14 @@ class CookieReport:
     skipped: List[Tuple[str, str]]
 
 
+def summarize_skipped(skipped: List[Tuple[str, str]], limit: int) -> str:
+    """Text form of a skipped list: first ``limit`` "name (rule)" entries, then ", and N more"."""
+    text = ", ".join(f"{name} ({rule})" for name, rule in skipped[:limit])
+    if len(skipped) > limit:
+        text += f", and {len(skipped) - limit} more"
+    return text
+
+
 def _safe_name(name: Any) -> str:
     """Echo a cookie name only when it is a short, well-formed token."""
     if isinstance(name, str) and len(name) <= _MAX_REPORTED_NAME and _NAME.fullmatch(name):

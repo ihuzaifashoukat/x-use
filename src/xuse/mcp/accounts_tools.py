@@ -92,6 +92,16 @@ class _CookieRollback(NamedTuple):
     backup: Optional[Path]
 
 
+_MAX_REPORTED_SKIPPED = 20
+
+
+def _skipped_result(skipped: List[Dict[str, str]]) -> Dict[str, Any]:
+    """Result fields for skipped cookies: first 20 entries plus the true count."""
+    if not skipped:
+        return {}
+    return {"skipped_cookies": skipped[:_MAX_REPORTED_SKIPPED], "skipped_cookie_count": len(skipped)}
+
+
 def _import_cookies(account_id: str, cookie_file: str, *, config_dir: Optional[Path] = None) -> Tuple[str, Optional[_CookieRollback], List[Dict[str, str]]]:
     """Validate and atomically import cookies beside the selected accounts file.
     Returns (cookie_file_path, rollback token, skipped cookies as
@@ -256,7 +266,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
             raise ToolError(str(e)) from e
         _commit_cookie_copy(cookie_copied)
         _refresh(ctx, updated)
-        extra = {"skipped_cookies": skipped_cookies} if skipped_cookies else {}
+        extra = _skipped_result(skipped_cookies)
         return ok_(account=ex.mask_account(entry),
                    message=f"Account '{account_id}' added. Previous accounts.json "
                            "is backed up in config/backups/.", **extra)
@@ -325,7 +335,7 @@ def register_account_tools(server, ctx: Ctx) -> None:
         _commit_cookie_copy(cookie_copied)
         _refresh(ctx, updated)
         await _close_after_config_change(ctx, account)
-        extra = {"skipped_cookies": skipped_cookies} if skipped_cookies else {}
+        extra = _skipped_result(skipped_cookies)
         return ok_(account=ex.mask_account(_known_account(ctx, account)),
                    message=f"Account '{account}' updated; warm session closed.", **extra)
 
