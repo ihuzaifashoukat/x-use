@@ -8,7 +8,10 @@ into these messages. Playwright exceptions can contain all of those.
 class SessionError(Exception):
     """The browser session cannot safely be used."""
 
-    def __init__(self, reason: str = "session_unavailable"):
+    def __init__(self, reason: str = "session_unavailable", *, detail: str = ""):
+        # Safe, value-free context (for example "ct0: insecure"). Deliberately
+        # kept out of str(error) so existing messages do not change.
+        self.detail = detail
         self.reason = reason if reason in _REASONS else "session_unavailable"
         super().__init__("Browser session unavailable ({0}).".format(
             reason if reason in _REASONS else "session_unavailable"))

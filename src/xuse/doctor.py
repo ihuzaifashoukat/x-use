@@ -306,7 +306,8 @@ def _check_mcp_cookies(loader: ConfigLoader, accounts: List[Dict[str, Any]],
     if not accounts:
         return [Check("mcp:cookies", "SKIP", "no accounts configured")]
     try:
-        from xuse.browser.cookies import load_account_cookies
+        from xuse.browser.cookies import load_account_cookies_report, summarize_skipped
+        from xuse.browser.errors import SessionError
     except Exception:
         return [Check("mcp:cookies", "FAIL", "MCP cookie validator is unavailable",
                       "repair the x-use installation")]
@@ -323,13 +324,20 @@ def _check_mcp_cookies(loader: ConfigLoader, accounts: List[Dict[str, Any]],
         account_id = account.get("account_id") or "<unknown>"
         name = f"mcp:cookies:{account_id}"
         try:
-            load_account_cookies(account, loader)
+            report = load_account_cookies_report(account, loader)
         except Exception as exc:
             detail = details.get(getattr(exc, "reason", None), "cookie import could not be validated")
+            safe = exc.detail if isinstance(exc, SessionError) else ""
+            if isinstance(safe, str) and safe:
+                detail = f"{detail} ({safe})"
             checks.append(Check(name, "FAIL", detail,
                                 "re-export fresh x.com cookies (auth_token + ct0, secure, unexpired)"))
         else:
-            checks.append(Check(name, "PASS", "cookie export satisfies strict MCP import validation"))
+            detail = "cookie export satisfies strict MCP import validation"
+            if report.skipped:
+                listed = summarize_skipped(report.skipped, 10)
+                detail += f"; skipped {len(report.skipped)} optional cookie(s): {listed}"
+            checks.append(Check(name, "PASS", detail))
     return checks
 
 

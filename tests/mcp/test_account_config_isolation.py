@@ -194,3 +194,25 @@ async def test_committed_tool_change_still_closes_old_session_after_caller_cance
         if test_owns_lock:
             entry.lock.release()
         await pool.close_all()
+
+
+@pytest.mark.asyncio
+async def test_add_account_result_lists_skipped_cookies_only_when_present(tmp_path):
+    from xuse.core.config_loader import ConfigLoader
+    (tmp_path / "settings.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "accounts.json").write_text("[]", encoding="utf-8")
+    loader = ConfigLoader(settings_file=tmp_path / "settings.json", accounts_file=tmp_path / "accounts.json")
+    clean = cookie_export(tmp_path / "clean.json")
+    result = await call_tool(server_for(loader), "add_account", {"account_id": "one", "cookie_file": str(clean)})
+    assert result["ok"] and "skipped_cookies" not in result
+    noisy = tmp_path / "noisy.json"
+    noisy.write_text(json.dumps(json.loads(clean.read_text()) + [
+        {"name": "gt", "value": "SECRET-VALUE", "domain": ".x.com", "secure": False,
+         "sameSite": "no_restriction"}]), encoding="utf-8")
+    async def close(_account):
+        return None
+
+    pool = SimpleNamespace(close=close)
+    result = await call_tool(server_for(loader, pool), "update_account", {"account": "one", "cookie_file": str(noisy)})
+    assert result["skipped_cookies"] == [{"name": "gt", "rule": "insecure_same_site_none"}]
+    assert "SECRET-VALUE" not in json.dumps(result)

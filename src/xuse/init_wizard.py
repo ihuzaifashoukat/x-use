@@ -22,7 +22,8 @@ from xuse.core.config_loader import (
     PROJECT_ROOT,
     normalize_account_dict as _normalize_account_dict,
 )
-from xuse.doctor import check_cookie_data
+from xuse.browser.cookies import parse_cookie_export_report, summarize_skipped
+from xuse.browser.errors import SessionError
 from xuse.core.local_state import private_state_file
 from xuse.models import AccountConfig
 from xuse.setup_defaults import DEFAULT_ACCOUNTS, DEFAULT_SETTINGS
@@ -200,17 +201,32 @@ def _import_cookies(account_id: str) -> str:
                     fg=typer.colors.YELLOW)
         return cookie_rel
     try:
-        data = _load_json(src_path)
-    except Exception as e:
-        typer.secho(f"Could not parse {src_path} as JSON: {e} — not imported.",
+        raw = src_path.read_bytes()
+    except OSError as e:
+        typer.secho(f"Could not read {src_path}: {e.strerror or 'I/O error'} — not imported.",
                     fg=typer.colors.YELLOW)
         return cookie_rel
-    ok, problems = check_cookie_data(data)
-    if not ok:
-        typer.secho("Warning: cookie file looks invalid: " + "; ".join(problems),
+    try:
+        json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeError, ValueError, RecursionError):
+        # Generic reason only: the parser's message can quote file content.
+        typer.secho(f"Could not parse {src_path} as JSON — not imported.",
                     fg=typer.colors.YELLOW)
+        return cookie_rel
+    try:
+        report = parse_cookie_export_report(raw)
+    except SessionError as e:
+        message = f"Warning: cookie file looks invalid ({e.reason})"
+        if e.detail:
+            message += f": {e.detail}"
+        typer.secho(message, fg=typer.colors.YELLOW)
         if not typer.confirm("Import it anyway?", default=False):
             return cookie_rel
+    else:
+        if report.skipped:
+            listed = summarize_skipped(report.skipped, 10)
+            typer.secho(f"Warning: skipping {len(report.skipped)} optional cookie(s) that "
+                        f"x-use cannot use: {listed}", fg=typer.colors.YELLOW)
     dest = CONFIG_DIR / f"{account_id}_cookies.json"
     if src_path.resolve() == dest.resolve():
         # The export already sits at the convention path — copying it onto
@@ -219,7 +235,7 @@ def _import_cookies(account_id: str) -> str:
         return cookie_rel
     if dest.exists() and not typer.confirm(f"{dest} already exists. Overwrite?", default=False):
         return cookie_rel
-    private_state_file(dest).write_bytes(src_path.read_bytes())
+    private_state_file(dest).write_bytes(raw)
     typer.secho(f"Imported cookies to {dest}.", fg=typer.colors.GREEN)
     return cookie_rel
 

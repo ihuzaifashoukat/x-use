@@ -42,6 +42,8 @@ Ask: "What should this account be called (a short id like `main` or
 2. Log into x.com in that browser, open the extension on x.com, Export as JSON.
 3. Save the file somewhere on this machine and give me the path.
 
+Only `auth_token` and `ct0` are required; unusable optional cookies are skipped, `x-use doctor` lists them by name and reason, and the `add_account`/`update_account` result lists them in `skipped_cookies`.
+
 Then call `add_account(account_id, cookie_file=<path>)`. The file is
 validated and copied server-side; cookie values never pass through the chat.
 Verify with `get_account_health(account)`; it checks the local cookie file,

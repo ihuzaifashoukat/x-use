@@ -106,23 +106,32 @@ def test_unspecified_samesite_preserves_browser_default_without_forcing_none():
 @pytest.mark.parametrize("extra", [
     {"domain": "x.com"}, {"domain": ".x.com", "hostOnly": True},
 ])
-def test_duplicate_effective_cookie_scope_is_rejected_even_for_non_auth_cookies(extra):
+def test_duplicate_effective_cookie_scope_skips_every_copy_of_an_optional_cookie(extra):
     payload = credentials() + [{"name": "preference", "value": "one", "domain": ".x.com"},
                                {"name": "preference", "value": "two", **extra}]
-    with pytest.raises(SessionError, match="invalid_cookies"):
-        cookies.normalize_cookies(payload, now=NOW)
+    report = cookies.inspect_cookies(payload, now=NOW)
+    assert [c["name"] for c in report.cookies] == ["auth_token", "ct0"]
+    assert report.skipped == [("preference", "duplicate")]
 
 
 def test_expired_optional_cookie_does_not_hide_invalid_later_entry():
     payload = credentials() + [{"name": "old", "value": "one", "expires": NOW - 1},
                                {"name": "foreign", "value": "two", "domain": "evilx.com"}]
-    with pytest.raises(SessionError, match="invalid_cookies"):
-        cookies.normalize_cookies(payload, now=NOW)
+    report = cookies.inspect_cookies(payload, now=NOW)
+    assert report.skipped == [("foreign", "not_x_domain")]
+    assert [c["name"] for c in report.cookies] == ["auth_token", "ct0"]
 
 
 @pytest.mark.parametrize("path", ["/safe\x7fpath", "/safe\npath"])
-def test_invalid_cookie_path_is_rejected(path):
+def test_invalid_cookie_path_is_skipped_for_optional_cookies(path):
     payload = credentials() + [{"name": "preference", "value": "one", "path": path}]
+    assert cookies.inspect_cookies(payload, now=NOW).skipped == [("preference", "invalid_path")]
+
+
+@pytest.mark.parametrize("path", ["/safe\x7fpath", "/safe\npath"])
+def test_invalid_credential_path_is_rejected(path):
+    payload = credentials()
+    payload[0]["path"] = path
     with pytest.raises(SessionError, match="invalid_cookies"):
         cookies.normalize_cookies(payload, now=NOW)
 

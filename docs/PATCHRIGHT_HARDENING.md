@@ -15,7 +15,7 @@ cross-platform release checks are recorded in [GitHub Actions](https://github.co
 | Session diagnostics | Report cold, starting, ready, busy, closing, disconnected or closed with local transport flags. No fresh authentication claim. |
 | Cookie health | Use the same strict loader, source precedence and account-relative path resolution as async startup. |
 | Cookie formats | Accept arrays and cookies/storage-state envelopes, importing cookies only. Preserve explicit host-only scope. |
-| Cookie validation | Reject duplicate JSON keys, ambiguous scopes, conflicting expiry and unsupported partition metadata. Bound input and normalized output size. |
+| Cookie validation | Reject duplicate JSON keys, ambiguous scopes, conflicting expiry and unsupported partition metadata in `auth_token`/`ct0` or the file itself; for optional cookies these problems skip the cookie (reported by name and rule). Bound input and normalized output size. |
 | Cookie replacement | Normalize through private temporary files and atomic replacement, including same-path imports. Restore the exact prior file if account configuration fails. |
 | Runtime diagnostics | Describe configured channel/headless options and the ephemeral profile policy without starting a browser. |
 | Account health | Report a weighted operational score out of 100 with unknown evidence, readiness blockers and recovery recommendations. Live authentication remains unverified. |
