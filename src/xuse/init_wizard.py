@@ -207,6 +207,13 @@ def _import_cookies(account_id: str) -> str:
                     fg=typer.colors.YELLOW)
         return cookie_rel
     try:
+        json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeError, ValueError, RecursionError):
+        # Generic reason only: the parser's message can quote file content.
+        typer.secho(f"Could not parse {src_path} as JSON — not imported.",
+                    fg=typer.colors.YELLOW)
+        return cookie_rel
+    try:
         report = parse_cookie_export_report(raw)
     except SessionError as e:
         message = f"Warning: cookie file looks invalid ({e.reason})"

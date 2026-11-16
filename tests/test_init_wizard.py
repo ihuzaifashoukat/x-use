@@ -285,3 +285,21 @@ def test_import_credential_failure_shows_reason_and_detail_then_prompts(
     assert "ct0: insecure" in out.out + out.err
     assert "SECRET-VALUE" not in out.out + out.err
     assert not (isolated_config / "acc_cookies.json").exists()
+
+
+def test_import_non_json_file_is_not_imported_and_never_prompts(
+        isolated_config, tmp_path, monkeypatch, capsys):
+    src = tmp_path / "export.json"
+    src.write_text("SECRET-VALUE is not json", encoding="utf-8")
+    monkeypatch.setattr(typer, "prompt", lambda *a, **k: str(src))
+
+    def no_confirm(*a, **k):  # pragma: no cover - must not be reached
+        raise AssertionError("a non-JSON file must not prompt")
+
+    monkeypatch.setattr(typer, "confirm", no_confirm)
+    rel = wizard._import_cookies("acc")
+    out = capsys.readouterr()
+    assert rel == "config/acc_cookies.json"
+    assert "not imported" in out.out + out.err
+    assert "SECRET-VALUE" not in out.out + out.err
+    assert not (isolated_config / "acc_cookies.json").exists()
